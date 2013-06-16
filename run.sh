@@ -19,9 +19,9 @@ else
     nodeprog=node
 fi
 
-$nodeprog target/frontserv.jsmacro.js &
+$nodeprog target/frontserv.jsmacro.js 2>>var/frontserv-stderr >>var/frontserv-stdout &
 frontserv_pid=$!
-$nodeprog target/ui.jsmacro.js &
+$nodeprog target/ui.jsmacro.js 2>>var/ui-stderr >>var/ui-stdout &
 ui_pid=$!
 
 printf 'running\n' >&2
