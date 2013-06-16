@@ -16,7 +16,7 @@ This project creates a client/server model where only the client
 decides on what information is accessed.
 
 As the HTTP client/server model democratised publishing of
-information, so this project's client/serer model democratises the
+information, so this project's client/server model democratises the
 access and sorting of information.
 
 To read about the bottom-up design goals of the project, see:
