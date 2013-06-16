@@ -59,7 +59,7 @@ vulnerable to unwanted influence, censorship, and surveillance.
 This project creates a system of fully decentralised storage, access,
 and finally sorting of information via trust models.
 
-Having this system is in place and widespread usage will allow
+Having this system in place and widespread usage will allow
 information to be truly free.
 
 
