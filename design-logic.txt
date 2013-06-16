@@ -1,0 +1,129 @@
+
+
+SERVER
+
+"There is no such thing as metadata or headers."
+
+Metadata is legally and systematically confusing. Data is data, and
+only convention can determine how it is treated.
+
+For structural facts intended to be communicated, one uses an
+in-channel communication of facts, in the same manner as with a
+Twitter message containing the hash tag and user, or IRC message
+potentially starting with a command.
+
+
+"There are no facts about a content, except for the content itself."
+
+No flags, no external information held about author, IP address,
+dates, post IDs, nothing.
+
+The data format can and must be defined completely over nothing more
+than an abstract data storage/transfer layer.
+
+The content is the only universal fact about itself. All other facts
+can and must be defined using other pieces of content, and are
+interpreted by convention only.
+
+In other words, the in-channel system knows nothing of the method by
+which data is stored or transferred, and it only knows about content.
+
+
+"All data is text data and all text data is UTF-8."
+
+The decision to use only text data over binary data is adequately
+explained elsewhere in the same decision for SMTP and other text-based
+forms. Among these, it is more likely to be human-readable, can be
+copy-pasted easily, and the bandwidth and size reduction is an
+increasingly non-issue.
+
+Text is sufficient to refer to resources containing binary, non-text
+data, eg. via URL, or for encoding directly using base64, so it is
+more than sufficient for representing binary data.
+
+UTF-8 is universal to computer systems and will be for at least the
+next century. It is the most compatible way to represent Unicode text.
+
+
+CLIENT
+
+"sha256 is the universal referencing system."
+
+Since there is no single service, and they store no extra information
+about a content, there must be a decentralised system with which to
+reference it. This allows structural relationships between data to be
+expressed without an intermediate authority. This is the cryptographic
+hash.
+
+This should be the sha256 of a content. sha1 is compromised so must
+not be used. sha256 is considered safe. sha512 is safe but the hash is
+larger than for sha256 and it needn't be considered, since sha256 is
+the smallest sufficient hash.
+
+Data services *should* try to allow multiple content to be known for a
+given hash in case of genuine collision, and allow the client to
+download both. Otherwise, if only one content is held for each hash,
+it is at the discretion of the service which content is served in case
+of collision. It is also at the discretion of the service to change
+this as it pleases, so long as the content is of the correct hash.
+
+If the service provides multiple contents, the client may disambiguate
+as it pleases, eg. manual interaction vs. pick first listed, all
+occurrences vs. specific occurrences.
+
+There is no specified system by which to get the data for a given
+hash, or relating to a given hash. It is up for the client to
+interface with such services.
+
+[ NOTE Possibly include, but reword or place elsewhere ]
+The client is the authority that decides which data is desired for
+download, and it asks for that data from any service(s) it chooses. If
+the client asks for any service to recommend data to be consumed, that
+service is considered client level, not server level, and the user
+must be aware of this and trust that it ultimately.
+[ /NOTE ]
+
+
+"GPG is used to sign structural facts."
+
+There are potentially infinite entries held in a service. Clients
+should only consider content to be relevant if it is correctly signed
+by a peer.
+
+Optionally, data should be encrypted to our own public key when it is
+ considered private.
+
+Decentralisation implies there is no single authority on any given
+statement - clients must be able to handle potentially conflicting
+signals about information such as the time at which an item was
+posted. It is up to the client how it interprets these facts and how
+it represents them to its user.
+
+
+"'Follower trees' may optional be published."
+
+A client may submit a signed list of users it recommends everyone to
+read for certain information, specifying the public key ID. This
+allows public networks of trust in content curating, editing and
+publishing to form. A client should allow in addition or instead to
+maintain a private list of keys to follow that is not made publically
+available.
+
+An algorithm may be used for transitively trusting an extended network
+for its voting opinion on content, if a user believes that their
+peer's own network contains only or mostly reliable voters.
+
+Such a network algorithm would provide a healthy balance between
+considering on all votes as valid (including unsigned or ones signed
+by any given key - ie. mostly bot votes), and only considering content
+which has been upvoted by a user's friend network of perhaps hundreds
+of people.
+
+Using such an algorithm on these published networks may allow a user's
+extended network of hundreds of thousands to be considered when
+looking at "likes" or "upvotes" of content.
+
+Even if a shill enters the network, a) they will likely be
+outnumbered, b) they can easily be added to a blacklist c) a user may
+review the networks that included the shill, and restrict their
+inclusion in future.
