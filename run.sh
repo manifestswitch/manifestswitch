@@ -8,6 +8,7 @@ function dokill() {
 
 trap dokill SIGINT SIGKILL
 
+touch /tmp/applog
 tailf -n 0 /tmp/applog &
 tailf_pid=$!
 
