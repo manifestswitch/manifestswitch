@@ -8,8 +8,9 @@ function dokill() {
 
 trap dokill SIGINT SIGKILL
 
-touch /tmp/applog
-tailf -n 0 /tmp/applog &
+mkdir -p var
+touch var/applog
+tailf -n 0 var/applog &
 tailf_pid=$!
 
 node target/frontserv.jsmacro.js &

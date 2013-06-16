@@ -121,7 +121,7 @@ function runAsyncLog() {
         str += date + async_id + item.msg + '\n' + (((e === null) || (e === undefined)) ? '' : e.stack + '\n');
     }
 
-    fs.writeFile('/tmp/applog', str, APPEND_MODE, null_function);
+    fs.writeFile('var/applog', str, APPEND_MODE, null_function);
     async_log_jobs = [];
 }
 
