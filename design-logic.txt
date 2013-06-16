@@ -100,7 +100,7 @@ posted. It is up to the client how it interprets these facts and how
 it represents them to its user.
 
 
-"'Follower trees' may optional be published."
+"'Follower trees' may optionally be published."
 
 A client may submit a signed list of users it recommends everyone to
 read for certain information, specifying the public key ID. This
