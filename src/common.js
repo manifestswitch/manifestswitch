@@ -102,7 +102,11 @@ var APPEND_MODE = { mode: 420, flag: 'a' };
 ////////////////////////////////////////////////////////////////////////////////
 /// LOGGING
 
-function null_function() {
+// really bad if it happens
+function log_failure(err) {
+    if (err !== null) {
+        console.error(err);
+    }
 }
 
 var async_will_log = false;
@@ -121,7 +125,7 @@ function runAsyncLog() {
         str += date + async_id + item.msg + '\n' + (((e === null) || (e === undefined)) ? '' : e.stack + '\n');
     }
 
-    fs.writeFile('var/applog', str, APPEND_MODE, null_function);
+    fs.writeFile('var/applog', str, APPEND_MODE, log_failure);
     async_log_jobs = [];
 }
 
