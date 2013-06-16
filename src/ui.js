@@ -198,7 +198,7 @@ function authenticate_continue(params, username) {
 function authenticate(username, password, cont) {
     // setTimeout(fn, 0); would be closer to desired call semantics,
     // but that would needlessly add up to 10ms to response time.
-    process.nextTick(authenticate_checker(username, password, cont));
+    authenticate_checker(username, password, cont)();
 }
 
 function postLogin(params) {
