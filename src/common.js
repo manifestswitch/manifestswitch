@@ -709,7 +709,7 @@ function loadStateReadFile(cont) {
 }
 
 function loadState(cont) {
-    fs.readFile('/tmp/appstate', { encoding: 'utf8' }, loadStateReadFile(cont));
+    fs.readFile('var/appstate', { encoding: 'utf8' }, loadStateReadFile(cont));
 }
 
 function periodicSaveStateComplete(err) {
@@ -724,12 +724,12 @@ function saveStateComplete(err) {
 }
 
 function saveStateAndExit() {
-    fs.writeFile('/tmp/appstate', JSON.stringify({ sessions: sessions }), saveStateComplete);
+    fs.writeFile('var/appstate', JSON.stringify({ sessions: sessions }), saveStateComplete);
 }
 
 // mild protection against unexpected crashes, only half a second of data should be lost
 function periodicSaveState() {
-    fs.writeFile('/tmp/appstate', JSON.stringify({ sessions: sessions }), periodicSaveStateComplete);
+    fs.writeFile('var/appstate', JSON.stringify({ sessions: sessions }), periodicSaveStateComplete);
 }
 
 var ip = '127.0.0.1';
