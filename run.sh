@@ -13,9 +13,15 @@ touch var/applog
 tailf -n 0 var/applog &
 tailf_pid=$!
 
-node target/frontserv.jsmacro.js &
+if [ -x ./tools/node/bin/node ]; then
+    nodeprog=./tools/node/bin/node
+else
+    nodeprog=node
+fi
+
+$nodeprog target/frontserv.jsmacro.js &
 frontserv_pid=$!
-node target/ui.jsmacro.js &
+$nodeprog target/ui.jsmacro.js &
 ui_pid=$!
 
 printf 'running\n' >&2
