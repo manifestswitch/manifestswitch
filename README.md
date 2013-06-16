@@ -10,7 +10,7 @@ and/or send an email to EbXza@yahoo.com
 
 
 What this project does
-======================
+----------------------
 
 This project creates a client/server model where only the client
 decides on what information is accessed.
@@ -24,7 +24,7 @@ https://github.com/manifestswitch/manifestswitch/blob/master/design-logic.txt
 
 
 Why do this
-===========
+-----------
 
 The key issue is one of trust.
 
@@ -64,7 +64,7 @@ information to be truly free.
 
 
 Project name
-============
+------------
 
 In generating a project name, I started picking words randomly from a
 dictionary file. The first was "switch", the second was "manifestly",
@@ -76,7 +76,7 @@ misleading, so I've left that for a later date.
 
 
 Plug
-====
+----
 
 If your organisation would like to donate a subsistence wage for me to
 research, develop and manage this project full time, please get in
