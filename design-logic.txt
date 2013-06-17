@@ -30,6 +30,7 @@ which data is stored or transferred, and it only knows about content.
 
 
 "All data is text data and all text data is UTF-8."
+'text/plain; charset=utf-8'
 
 The decision to use only text data over binary data is adequately
 explained elsewhere in the same decision for SMTP and other text-based
