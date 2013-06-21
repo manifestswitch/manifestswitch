@@ -430,7 +430,7 @@ function putDataItem(params) {
         if (alreadyHas === null) {
             newdata = { hash: hex, content: uparams.content, gone: false, refersCached: false };
             datadb.push(newdata);
-            hashed_by[hex] = newdata;
+            hashed_by[hex] = [newdata];
 
             // TODO: this could actually be done in a periodic timer
             // process, since it doesn't matter if the index is a bit
