@@ -319,7 +319,7 @@ function getDataListPlain(params) {
 
     if (rv !== null) {
         for (var i = 0, len = rv.length; i < len; ++i) {
-            body += rv[i].hash + '\t' + i + '\n';
+            body += rv[i].hash + '\n';
         }
         status = 200;
     } else {
@@ -336,7 +336,7 @@ function getDataListJson(params) {
 
     if (rv !== null) {
         for (var i = 0, len = rv.length; i < len; ++i) {
-            body += '{ "hash": "' + rv[i].hash + '", "entry": ' + i + ' },\n';
+            body += '{ "hash": "' + rv[i].hash + '" },\n';
         }
         body += ']}\n';
         status = 200;
@@ -355,7 +355,7 @@ function getDataListHtml(params) {
 
     if (rv !== null) {
         for (var i = 0, len = rv.length; i < len; ++i) {
-            body += '<li><a href="/data/' + rv[i].hash + '/entry/' + i + '">' + rv[i].hash + ' ' + i + '</a></li>\n';
+            body += '<li><a href="/data/' + rv[i].hash + '">' + rv[i].hash + '</a></li>\n';
         }
 
         body += '</ol>\n';
@@ -492,7 +492,7 @@ function getDataItem(params) {
     var hash = params.urlparts.pathname.substring('/data/'.length);
 
     if (hash in hashed_by) {
-        return hashed_by[hash];
+        return hashed_by[hash][0];
     }
 
     return null;
@@ -840,7 +840,11 @@ var places_exact = {
 
 var places_regex = [
     {
-        re: /\/data\/([0-9a-f]{64})\/entry\/[0-9]+/,
+        // Though it's possible to keep track of multiple contents of
+        // same hash in the case of collision, this is not likely to
+        // happen in the immediate future.
+        //re: /\/data\/([0-9a-f]{64})\/entry\/[0-9]+/,
+        re: /\/data\/([0-9a-f]{64})/,
         methods: {
             'GET': [
                 { type: 'application/json', action: getDataItemJson },
