@@ -418,7 +418,7 @@ function putDataItem(params) {
     function putDataItemEnd() {
         var shasum = crypto.createHash('sha256');
         var uparams = url.parse('?' + str, true).query;
-        var hex, r, alreadyHas = null, j = 0, newdata, refhex;
+        var hex, alreadyHas = null, newdata;
 
         shasum.update(uparams.content);
         hex = shasum.digest('hex');
@@ -437,28 +437,20 @@ function putDataItem(params) {
             // slow to update.
             //needs_referring.push(hex);
 
-            r = hash_re.exec(uparams.content);
+            var references = getReferencedHashes(uparams.content);
 
-            while (r !== null) {
+            for (var i = 0, len = references.length; i < len; ++i) {
+                var refhex = references[i];
 
-                if (((r.index === 0) || !isHexCode(uparams.content.charCodeAt(r.index - 1))) &&
-                    (((r.index + 64) === uparams.content.length) || !isHexCode(uparams.content.charCodeAt(r.index + 64)))) {
-                    refhex = uparams.content.substring(r.index, r.index + 64);
-
-                    if (!(refhex in referred_by)) {
-                        referred_by[refhex] = [hex];
-                        refersdb.push({ referrer: hex, referree: refhex });
-                    } else {
-                        if (referred_by[refhex].indexOf(hex) === -1) {
-                            referred_by[refhex].push(hex);
-                            refersdb.push({ referrer: hex, referree: refhex });
-                        }
-                    }
+                if (!(refhex in referred_by)) {
+                    referred_by[refhex] = [hex];
+                    refersdb.push({ referrer: hex, referree: refhex });
+                } else if (referred_by[refhex].indexOf(hex) === -1) {
+                    referred_by[refhex].push(hex);
+                    refersdb.push({ referrer: hex, referree: refhex });
                 }
-
-                r = hash_re.exec(uparams.content);
-                ++j;
             }
+
             newdata.refersCached = true;
 
             redirectTo(params, '/data/result?sha256=' + hex + '&prestate=none');
