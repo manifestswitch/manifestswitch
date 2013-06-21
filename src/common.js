@@ -154,6 +154,20 @@ function isHexCode(ch) {
     return ((ch >= 48) && (ch <= 57)) || ((ch >= 97) && (ch <= 104));
 }
 
+function getReferencedHashes(content) {
+    var hashes = [];
+    var r = hash_re.exec(content);
+
+    while (r !== null) {
+        if (((r.index === 0) || !isHexCode(content.charCodeAt(r.index - 1))) &&
+            (((r.index + 64) === content.length) || !isHexCode(content.charCodeAt(r.index + 64)))) {
+            hashes.push(content.substring(r.index, r.index + 64));
+        }
+        r = hash_re.exec(content);
+    }
+    return hashes;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 /// HTML output
 
