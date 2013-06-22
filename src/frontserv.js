@@ -351,16 +351,16 @@ function getDataListJson(params) {
 
 function getDataListHtml(params) {
     var rv = getDataList(params);
-    var body = '<ol>\n', status;
+    var body = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style"></head><body><ol>\n', status;
 
     if (rv !== null) {
         for (var i = 0, len = rv.length; i < len; ++i) {
-            body += '<li><a href="/data/' + rv[i].hash + '">' + rv[i].hash + '</a></li>\n';
+            body += '<li><a class="hash" href="/data/' + rv[i].hash + '">' + rv[i].hash + '</a></li>\n';
         }
 
         body += '</ol>\n';
         body += '<div><a href="/data/form">Add</a></div>';
-        body += '<div><a href="/">Home</a></div>';
+        body += '<div><a href="/">Home</a></div></body></html>';
         status = 200;
 
     } else {
@@ -733,6 +733,10 @@ function getLogoutResultHtml(params) {
     sendResponse(params, { status: status, body: body });
 }
 
+function getStyleCss(params) {
+    sendResponse(params, { status: 200, body: '.hash { font-family: monospace; }' });
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 var APP_PORT = 1337;
@@ -792,6 +796,12 @@ var places_exact = {
             { type: 'text/plain', action: getLogoutResultPlain },
             { type: 'text/html', action: getLogoutResultHtml }
         ],
+    },
+
+    '/style': {
+        'GET': [
+            { type: 'text/css', action: getStyleCss }
+        ]
     },
 
     // These error pages are only globally GET'able so we can 303 into
