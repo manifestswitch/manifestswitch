@@ -9,8 +9,9 @@ function dokill() {
 trap dokill SIGINT SIGKILL
 
 mkdir -p var/{log,gpg}
-touch var/log/applog
-tailf -n 0 var/log/applog &
+logfiles="var/log/frontserv-stderr var/log/frontserv-stdout var/log/ui-stderr var/log/ui-stdout var/log/applog"
+touch $logfiles
+tail -F -n 0 $logfiles &
 tailf_pid=$!
 
 if [ -x ./tools/node/bin/node ]; then
