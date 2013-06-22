@@ -399,6 +399,7 @@ function getReferencingHashesFromCache(referencing) {
 // each in turn.
 function updateReferencesGotListFn(stale, cont) {
 
+    var lists = [];
     var waiting = 0;
     var data_eos;
 
@@ -407,7 +408,7 @@ function updateReferencesGotListFn(stale, cont) {
 
         if (waiting === 0) {
             if (data_eos) {
-                cont();
+                cont(lists);
             } else {
                 getDataList(stale, gotList);
             }
@@ -419,9 +420,11 @@ function updateReferencesGotListFn(stale, cont) {
             if (!eos) {
                 async_log('WARN Got 0 data even though not eos');
             }
-            cont();
+            cont(lists);
             return;
         }
+
+        lists.push(data);
 
         data_eos = eos;
         waiting = data.length;
