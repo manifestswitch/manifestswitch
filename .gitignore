@@ -1,3 +1,4 @@
 target/
 var/
 tools/node
+node_modules/
