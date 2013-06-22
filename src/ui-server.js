@@ -234,7 +234,7 @@ function getDataList(references, cont) {
 
         var ch = '';
         res.on('data', function (chunk) {
-            ch += chunk.toString();
+            ch += chunk;
         });
         res.on('end', function () {
             var ret;
@@ -295,7 +295,7 @@ function getDataItem(hex, cont) {
 
         var ch = '';
         res.on('data', function (chunk) {
-            ch += chunk.toString();
+            ch += chunk;
         });
         res.on('end', function () {
             if ((res.statusCode >= 200) && (res.statusCode <= 299)) {
@@ -532,10 +532,10 @@ function postLogin(params) {
     }
 
     function postLoginData(buf) {
-        // TODO: take purported encoding from req object
-        str += buf.toString();
+        str += buf;
     }
 
+    params.request.setEncoding('utf8');
     params.request.on('end', postLoginEnd);
     params.request.on('data', postLoginData);
 }
@@ -603,10 +603,10 @@ function putDataItem(params) {
     }
 
     function putDataItemData(buf) {
-        // TODO: take purported encoding from req object
-        str += buf.toString();
+        str += buf;
     }
 
+    params.request.setEncoding('utf8');
     params.request.on('end', putDataItemEnd);
     params.request.on('data', putDataItemData);
 }

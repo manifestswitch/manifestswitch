@@ -165,10 +165,10 @@ function postLogin(params) {
     }
 
     function postLoginData(buf) {
-        // TODO: take purported encoding from req object
-        str += buf.toString();
+        str += buf;
     }
 
+    params.result.setEncoding('utf8');
     params.request.on('end', postLoginEnd);
     params.request.on('data', postLoginData);
 }
