@@ -778,8 +778,9 @@ function main() {
         // increasing our resilience to unexpected errors.
         trace('cluster.fork()');
         cluster.fork();
-        trace('cluster.fork()');
-        cluster.fork();
+
+        //trace('cluster.fork()');
+        //cluster.fork();
 
         cluster.on('disconnect', clusterDisconnect);
     } else {
