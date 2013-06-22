@@ -842,9 +842,12 @@ function getDataPostsHtml(params) {
 
                            function sendFinal() {
                                var html = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style"></head><body>';
-                               var posts = Object.keys(user_posts[username][hash]);
-                               for (var k = 0, klen = posts.length; k < klen; ++k) {
-                                   html += '<a class="hash" href="/posts/' + posts[k] + '">' + posts[k] + '</a>';
+                               var posts;
+                               if ((username in user_posts) && (hash in user_posts[username])) {
+                                   posts = Object.keys(user_posts[username][hash]);
+                                   for (var k = 0, klen = posts.length; k < klen; ++k) {
+                                       html += '<a class="hash" href="/posts/' + posts[k] + '">' + posts[k] + '</a>';
+                                   }
                                }
                                html += '</body></html>';
                                sendResponse(params, { status: 200, body: html });
