@@ -817,6 +817,10 @@ function getPostItemHtml(params) {
     sendResponse(params, { status: 200, body: body });
 }
 
+function getStyleCss(params) {
+    sendResponse(params, { status: 200, body: '.hash { font-family: monospace; }' });
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 var APP_PORT = 1338;
@@ -867,6 +871,12 @@ var places_exact = {
     '/post/form': {
         'GET': [
             { type: 'text/html', action: getPostFormHtml }
+        ]
+    },
+
+    '/style': {
+        'GET': [
+            { type: 'text/css', action: getStyleCss }
         ]
     },
 
