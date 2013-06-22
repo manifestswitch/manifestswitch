@@ -2,7 +2,7 @@
 
 function dokill() {
 	kill $dataserver_pid
-	kill $ui-serverserver_pid
+	kill $uiserver_pid
 	kill $tailf_pid
 }
 
