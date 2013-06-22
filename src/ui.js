@@ -139,13 +139,326 @@ future, find or make a library to do this efficiently.
 ////////////////////////////////////////////////////////////////////////////////
 
 var userdb = [
-    { 'username': 'user', 'password': 'pass' }
+    { 'username': 'user', 'password': 'pass', 'gpgdir': 'var/gpg/user' },
+    { 'username': 'user2', 'password': 'pass', 'gpgdir': 'var/gpg/user2' }
 ];
 
 // index on username -> userdb[i]
 var by_username = {
-    'user': userdb[0]
+    'user': userdb[0],
+    'user2': userdb[1]
 };
+
+// what we are ultimately looking for is the hashes of all our
+// friend's signature fingerprints, and hash of our encryption
+// fingerprint
+// 'user': ['d283a3...' /*mine*/, 'cd3987af...', ... /*theirs*/ ]
+var follows_list = {
+    // [sha256("user"), sha256("user2")]
+    'user': ['04f8996da763b7a969b1028ee3007569eaf3a635486ddab211d512c85b9df8fb', '6025d18fe48abd45168528f18a82e265dd98d421a7084aa09f61b341703901a3']
+}
+
+var datadb = [
+    //{ hash: 'caf3af6d893b5cb8eae9a90a3054f370a92130863450e3299d742c7a65329d94', content: 'boo\n', gone: false },
+];
+
+// index on hash -> [datadb[i], ...]
+var hashed_by = {
+}
+
+var refersdb = [
+//    { referrer: 'caf3af6d893b5cb8eae9a90a3054f370a92130863450e3299d742c7a65329d94',
+//      referree: 'bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c' },
+];
+
+// an index on referree -> [referrer, ...]
+var referred_by = {
+};
+
+// pubkey -> [content, ...]
+var posted_by = {
+    //'user2': [datadb[0]]
+};
+
+// returns a list of all hashes that the user wants to follow
+// references of
+function userFollowList(username) {
+    if (!(username in follows_list)) {
+        return [];
+    }
+    return follows_list[username];
+}
+
+// how far into a given stream we have processed. This works a bit
+// like a seek operation and allows us to only fetch those hashes
+// which have arrived since our last download.
+// TODO: what if we ever need to rewind due to an error? Redo the
+// whole stream?
+var offsets = {
+    // "https://example.org/data?references=...,...": 137
+};
+
+var currentlyFetchingLists = {
+    // basePath: [handler,...]
+};
+
+function getDataList(references, cont) {
+    var basePath = '/data?references=' + references.join(',');
+    var hostname = '127.0.0.1';
+    var source = hostname + basePath;
+
+    // if the list is already being got, just register interest in the
+    // results
+    if (source in currentlyFetchingLists) {
+        currentlyFetchingLists[source].push(cont);
+        return;
+    }
+    currentlyFetchingLists[source] = [cont];
+
+    if (!(source in offsets)) {
+        offsets[source] = 0;
+    }
+
+    var options = {
+        hostname: hostname,
+        port: 1337,
+        path: basePath + '&first=' + offsets[source],
+        method: 'GET',
+        headers: { Accept: 'text/plain' }
+    };
+
+    var req = http.request(options, function(res) {
+        async_log('STATUS: ' + res.statusCode);
+        async_log('HEADERS: ' + JSON.stringify(res.headers));
+        res.setEncoding('utf8');
+
+        var ch = '';
+        res.on('data', function (chunk) {
+            ch += chunk.toString();
+        });
+        res.on('end', function () {
+            var ret;
+
+            if (ch === '') {
+                ret = [];
+            } else {
+                ret = getReferencedHashes(ch);
+            }
+            offsets[source] += ret.length;
+
+            var isEos = (!('x-total' in res.headers)) || (offsets[source] === parseInt(res.headers['x-total'], 10));
+
+            for (var i = 0, len = currentlyFetchingLists[source].length; i < len; ++i) {
+                currentlyFetchingLists[source][i](ret, isEos);
+            }
+            delete currentlyFetchingLists[source];
+        });
+    });
+
+    req.on('error', function(e) {
+        async_log('problem with request: ' + e.message);
+    });
+
+    req.end();
+}
+
+var currentlyFetchingItems = {
+    // hex: [handler,...]
+};
+
+// TODO: as a potential optimisation, do everything as in the Agent
+// implementation, except when the request queue has more than one
+// element, combine them into a single bulk request to the data
+// service. Could be useful in higher latency connections.
+function getDataItem(hex, cont) {
+
+    // if the item is already being got, just register interest in the
+    // results
+    if (hex in currentlyFetchingItems) {
+        currentlyFetchingItems[hex].push(cont);
+        return;
+    }
+    currentlyFetchingItems[hex] = [cont];
+
+    var options = {
+        hostname: '127.0.0.1',
+        port: 1337,
+        path: '/data/' + hex,
+        method: 'GET',
+        headers: { Accept: 'text/plain' }
+    };
+
+    var req = http.request(options, function(res) {
+        async_log('STATUS: ' + res.statusCode);
+        async_log('HEADERS: ' + JSON.stringify(res.headers));
+        res.setEncoding('utf8');
+
+        var ch = '';
+        res.on('data', function (chunk) {
+            ch += chunk.toString();
+        });
+        res.on('end', function () {
+            if ((res.statusCode >= 200) && (res.statusCode <= 299)) {
+                var shasum = crypto.createHash('sha256');
+                shasum.update(ch);
+                var digest = shasum.digest('hex');
+
+                if (digest !== hex) {
+                    // this would be a good point to fail over to another data
+                    // service
+                    ch = null;
+                }
+            } else {
+                ch = null
+            }
+
+            for (var i = 0, len = currentlyFetchingItems[hex].length; i < len; ++i) {
+                currentlyFetchingItems[hex][i](hex, ch);
+            }
+            delete currentlyFetchingItems[hex];
+        });
+    });
+
+    req.on('error', function(e) {
+        async_log('problem with request: ' + e.message);
+    });
+
+    req.end();
+}
+
+var currentlyFetchingItemsToIndex = {
+    // hex: [handler,...]
+};
+
+function getDataItemAndIndex(hash, cont) {
+
+    function fetchedDataItem(hex, data) {
+
+        // need to be careful that all related indexes are fully
+        // calculated before we return, else another part of code may get
+        // partially complete results.
+        // save the data in cache, we shouldn't need to download it ever again
+
+        if (data !== null) {
+            var newdata = { hash: hex, content: data, gone: false, refersCached: false };
+            datadb.push(newdata);
+            hashed_by[hex] = [newdata];
+
+            // index all of the things it references
+            var references = getReferencedHashes(data);
+
+            for (var i = 0, len = references.length; i < len; ++i) {
+                var refhex = references[i];
+
+                if (!(refhex in referred_by)) {
+                    referred_by[refhex] = [hex];
+                    refersdb.push({ referrer: hex, referree: refhex });
+                } else if (referred_by[refhex].indexOf(hex) === -1) {
+                    referred_by[refhex].push(hex);
+                    refersdb.push({ referrer: hex, referree: refhex });
+                }
+            }
+        }
+
+        for (var i = 0, len = currentlyFetchingItemsToIndex[hex].length; i < len; ++i) {
+            currentlyFetchingItemsToIndex[hex][i]();
+        }
+        delete currentlyFetchingItemsToIndex[hex];
+    }
+
+    if (hash in hashed_by) {
+        cont();
+        return;
+    }
+
+    // if the item is already being got, just register interest in the
+    // results
+    if (hash in currentlyFetchingItemsToIndex) {
+        currentlyFetchingItemsToIndex[hash].push(cont);
+        return;
+    }
+    currentlyFetchingItemsToIndex[hash] = [cont];
+
+    getDataItem(hash, fetchedDataItem);
+}
+
+// Essentially just takes a wedge of the 
+function getReferencingHashesFromCache(referencing) {
+    var rv = {};
+    for (var i = 0, len = referencing.length; i < len; ++i) {
+        rv[referencing[i]] = referred_by[referencing[i]];
+    }
+    return rv;
+}
+
+// this just streams across the references list attempting to download
+// each in turn.
+function updateReferencesGotListFn(stale, cont) {
+
+    var waiting = 0;
+    var data_eos;
+
+    function fetchedDataItemIndexed(hex, data) {
+        --waiting;
+
+        if (waiting === 0) {
+            if (data_eos) {
+                cont();
+            } else {
+                getDataList(stale, gotList);
+            }
+        }
+    }
+
+    function gotList(data, eos) {
+        if (data.length === 0) {
+            if (!eos) {
+                async_log('WARN Got 0 data even though not eos');
+            }
+            cont();
+            return;
+        }
+
+        data_eos = eos;
+        waiting = data.length;
+
+        // update our caches
+        for (var i = 0, len = data.length; i < len; ++i) {
+            var hex = data[i];
+            getDataItemAndIndex(hex, fetchedDataItemIndexed);
+        }
+    };
+
+    return gotList;
+}
+
+function updateReferencingHashesCached(referencing, cont) {
+    var stale = [];
+
+    for (var i = 0, len = referencing.length; i < len; ++i) {
+        // TODO: filter fl down so that we only try to refetch if our
+        // cached data is older than say 1 second.
+        // If they're all under 1 second old, there's nothing to do.
+        if (true || referencesListIsStale(referencing[i])) {
+            stale.push(referencing[i]);
+        }
+    }
+
+    if (stale.length !== 0) {
+        getDataList(stale, updateReferencesGotListFn(stale, cont));
+    } else {
+        cont();
+    }
+}
+
+// for the currently logged in user, we would like to loop through
+// their peers, re-downloading all of the hashes of content that
+// person has ever potentially signed.
+// These posts are cached locally as user -> [content, ...]
+function refreshPeerContent(username, cont) {
+    var fl = userFollowList(username);
+    updateReferencingHashesCached(fl, cont);
+}
 
 // LOGIN CODE
 
@@ -366,49 +679,12 @@ function getHomePageHtml(params) {
             ) +
             '    <div>\n' +
             '      <h1>Data</h1>\n' +
-            '      <div>Stuff stuff</div>\n' +
+            '      <div>Stuff stuff <a href="/posts">posts</a></div>\n' +
             '    </div>\n' +
             '  </body>\n' +
             '</html>');
 
     sendResponse(params, { status: 200, body: body });
-}
-
-var options = {
-    hostname: '127.0.0.1',
-    port: 1337,
-    path: '/data',
-    method: 'GET'
-};
-
-function getHomePageHtmlOld(params) {
-
-    async_log('starting hit');
-
-    var req = http.request(options, function(res) {
-        async_log('STATUS: ' + res.statusCode);
-        async_log('HEADERS: ' + JSON.stringify(res.headers));
-        res.setEncoding('utf8');
-
-        var ch = '';
-        res.on('data', function (chunk) {
-            ch += chunk.toString();
-        });
-        res.on('end', function () {
-            params.contentType = 'text/plain';
-            sendResponse(params, { status: 200, body: ch });
-        });
-
-
-    });
-
-    req.on('error', function(e) {
-        async_log('problem with request: ' + e.message);
-    });
-
-// write data to request body
-
-    req.end();
 }
 
 /*
@@ -428,6 +704,111 @@ list date ordered: see most recent at top, eg. most recent by Bob or most recent
 list rated: same as above, but sorted by friend's upvotes within a time period
 
 */
+
+// This is a preliminary page to list all content which references a hash and is correctly signed by a trusted key.
+// I'd like this to look like a full recursive tree view of items as in YC news.
+//
+// The basic format of each node is:
+// -----------
+// some data
+//
+// ~date($somedate)
+// ~parent($somehash)
+//
+// BEGIN GPG SIGNATURE
+// ...
+// END GPG SIGNATURE
+// -----------
+//
+// The basic HTML only view is to be shown the content, and then have
+// a link to see the parent post (if there is one), and a link to see
+// the list of 0 or more child posts.
+//
+// GET /post/$somehash
+// [ $sigkeyid | $somedate | Parent link | Children link | +42 | -3 ]
+// some data
+//
+// The lists view is simply:
+// GET /posts&references=$somehash
+// [ $sigkeyid1 | $somedate1 | Item1 link ]
+// [ $sigkeyid2 | $somedate2 | Item2 link ]
+// [ $sigkeyid3 | $somedate3 | Item3 link ]
+// [ $sigkeyid4 | $somedate4 | Item4 link ]
+//
+// The design is exactly analagous to "GET /data?references=..." and
+// "GET /data/$hash/entry/$id" except that instead of showing all
+// entries, we only show those that are in valid "post" format, and
+// only those that have an upvote signed by someone we trust.
+//
+// The hash parameter is the node to be considered.
+
+function getPostsDataListContinue (data) {
+    status = 200;
+    body = '<h1>200 OK: Page here: ' + data + '</h1><a href="/">Continue</a>';
+    sendResponse(params, { status: status, body: body });
+}
+
+// This returns the list of posts with at least one upvote signed by someone in our network.
+function getDataPostsHtml(params) {
+    var body, status;
+
+    if (sessionGet(params, 'usename') === null) {
+        status = 403;
+        body = '<h1>403 Forbidden: You must be logged in </h1><a href="/">Continue</a>';
+        sendResponse(params, { status: status, body: body });
+        return;
+    }
+
+    var query = url.parse(params.request.url, true).query;
+    var hash;
+
+    if (!('hash' in query)) {
+        // just a helpful starting point
+        hash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+    } else {
+        hash = query.hash;
+    }
+
+    // a) If we do not yet have an up-to-date list of our network's
+    // current upvotes (non-repudiated), retrieve that by looping over
+    // each peer.
+    // a.1) For each peer, download everything they've ever signed
+    // a.2) For each of those content, get a filter list of their upvotes, downvotes, and novotes
+    // a.3) Where multiple votes are cast on the same content by a user, take only the most recent one.
+    // b) For each of the upvotes above, download the content it references.
+    // c) Filter the list to only those containing "~parent($hash)"
+
+    refreshPeerContent(sessionGet(params, 'username'),
+                       function () {
+                           sendResponse(params, { status: 200, body: 'hiya' });
+                           return;
+                           // only upvotes signed by keyids which we are following
+                           upvotesList = getCurrentUpvotes();
+                           contents = map(downloadUpvotedContent, upvotesList);
+                           posts = filter(isChildPostOf(hash), contents);
+                           //print(posts)
+                       });
+}
+
+function getPostFormHtml(params) {
+    var body = ('    <form action="/post" method="POST">\n' +
+                '      <input type="hidden" name="_method" value="PUT">\n' +
+                '      <input type="text" name="parent">\n' +
+                '      <textarea name="content"></textarea>\n' +
+                '      <input value="submit" type="submit">\n' +
+                '    </form>\n');
+
+    body += '<a href="/posts">Back</a>';
+
+    sendResponse(params, { status: 200, body: body });
+}
+
+function getPostItemHtml(params) {
+    var body = ('    <h1>Hello</h1>');
+    body += '<a href="/posts">Back</a>';
+
+    sendResponse(params, { status: 200, body: body });
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -455,7 +836,7 @@ var places_exact = {
             { type: 'application/json', action: getLoginResultJson },
             { type: 'text/plain', action: getLoginResultPlain },
             { type: 'text/html', action: getLoginResultHtml }
-        ],
+        ]
     },
 
     '/logout': {
@@ -467,7 +848,19 @@ var places_exact = {
             { type: 'application/json', action: getLogoutResultJson },
             { type: 'text/plain', action: getLogoutResultPlain },
             { type: 'text/html', action: getLogoutResultHtml }
-        ],
+        ]
+    },
+
+    '/posts': {
+        'GET': [
+            { type: 'text/html', action: getDataPostsHtml }
+        ]
+    },
+
+    '/post/form': {
+        'GET': [
+            { type: 'text/html', action: getPostFormHtml }
+        ]
     },
 
     // These error pages are only globally GET'able so we can 303 into
@@ -506,7 +899,27 @@ var places_exact = {
     }
 };
 
-var places_regex = {};
+var places_regex = [
+    {
+        // unlike GET /data/$hash/entry/$id, we don't need to
+        // disambiguate, because the likelihood of any two posts
+        // sharing a sha256 is vanishingly small, and can't be
+        // maliciously crafted.
+        //
+        // XXX: but that depends on the format of a post. If we make
+        // all fields of a post be optional, it becomes less safe.
+        // For the unparented case, this does leave potential for
+        // collisions to occur, however, for all posts with a
+        // parent(), it is still vanishingly unlikely they'll share
+        // the same hash.
+        re: /\/post\/([0-9a-f]{64})/,
+        methods: {
+            'GET': [
+                { type: 'text/html', action: getPostItemHtml }
+            ]
+        }
+    }
+];
 
 ////////////////////////////////////////////////////////////////////////////////
 
