@@ -330,6 +330,10 @@ var currentlyFetchingItemsToIndex = {
     // hex: [handler,...]
 };
 
+function getDataCached(hash) {
+    return hash in hashed_by ? (hashed_by[hash].length > 0 ? hashed_by[hash][0].content : null) : null;
+}
+
 function getDataItemAndIndex(hash, cont) {
 
     function fetchedDataItem(hex, data) {
