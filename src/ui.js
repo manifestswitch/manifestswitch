@@ -361,7 +361,7 @@ function getDataItemAndIndex(hash, cont) {
         }
 
         for (var i = 0, len = currentlyFetchingItemsToIndex[hex].length; i < len; ++i) {
-            currentlyFetchingItemsToIndex[hex][i]();
+            currentlyFetchingItemsToIndex[hex][i](hex, data);
         }
         delete currentlyFetchingItemsToIndex[hex];
     }
