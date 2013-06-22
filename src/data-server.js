@@ -188,7 +188,7 @@ function getHomePageHtml(params) {
                 ((username !== undefined) && (username !== null)) ?
                     ('    <div>\n' +
                      '      ' + htmlEscape(username) + '\n' +
-                     '    <div>\n' +
+                     '    </div>\n' +
                      '    <form action="/logout" method="POST">\n' +
                      '      <input value="logout" type="submit">\n' +
                      '    </form>\n')
