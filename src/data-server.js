@@ -547,13 +547,13 @@ function getDataItemHtml(params) {
 
     if (rv === null) {
         status = 404;
-        body = '<h1>404: Not Found</h1><a href="/data">Continue</a>';
+        body = '<!DOCTYPE html><html><head></head><body><h1>404: Not Found</h1><a href="/data">Continue</a></body></html>';
     } else if (rv.gone === true) {
         status = 410;
-        body = '<h1>410: Gone</h1><a href="/data">Continue</a>';
+        body = '<!DOCTYPE html><html><head></head><body><h1>410: Gone</h1><a href="/data">Continue</a></body></html>';
     } else {
         status = 200;
-        body = '<h1>200: OK</h1><pre>' + htmlEscape(rv.content) + '</pre><a href="/data">Continue</a>';
+        body = '<!DOCTYPE html><html><head></head><body><h1>200: OK</h1><pre>' + htmlEscape(rv.content) + '</pre><a href="/data">Continue</a></body></html>';
     }
 
     sendResponse(params, { status: status, body: body });
