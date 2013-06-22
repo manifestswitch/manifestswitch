@@ -839,6 +839,11 @@ var places_regex = [
         re: /\/data\/([0-9a-f]{64})/,
         methods: {
             'GET': [
+                // Only the text/plain represents the raw data -
+                // text/html and application/json both add extra
+                // markup around it.
+                // XXX: add a binary type here too, in case text/plain
+                // isn't known to be applicable.
                 { type: 'application/json', action: getDataItemJson },
                 { type: 'text/plain', action: getDataItemPlain },
                 { type: 'text/html', action: getDataItemHtml }
