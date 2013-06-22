@@ -367,7 +367,7 @@ function getDataItemAndIndex(hash, cont) {
     }
 
     if (hash in hashed_by) {
-        cont();
+        process.nextTick(cont);
         return;
     }
 
