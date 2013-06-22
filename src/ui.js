@@ -755,6 +755,52 @@ function getPostsDataListContinue (data) {
     sendResponse(params, { status: status, body: body });
 }
 
+// If there is an upvote, returns the thing being upvoted
+var upvotes = {
+    // 'hex': hex
+};
+
+var upvoteRegex = /~upvote\(([0-9a-f]{64})\)/;
+
+function getUpvoted(hex) {
+    if (!(hex in upvotes)) {
+        var data = getDataCached(hex);
+        if (data === null) {
+            return null;
+        }
+        async_log(JSON.stringify(data));
+        var match = data.match(upvoteRegex);
+        upvotes[hex] = (match === null) ? null : match[1];
+    }
+    return upvotes[hex];
+}
+
+// If there is a parent, returns it
+var parents = {
+    // 'hex': hex
+};
+
+var parentsRegex = /~parent\(([0-9a-f]{64})\)/;
+
+function getPostParent(hex) {
+    async_log('h:'+hex);
+    if (!(hex in parents)) {
+        var data = getDataCached(hex);
+        async_log('d:'+data);
+        if (data === null) {
+            return null;
+        }
+        var match = data.match(parentsRegex);
+        async_log('m:'+match);
+        parents[hex] = (match === null) ? null : match[1];
+    }
+    return parents[hex];
+}
+
+var user_posts = {
+    // 'user': { 'posthash': set({'childhash1', 'childhash2', ...}), ... }
+}
+
 // This returns the list of posts with at least one upvote signed by someone in our network.
 function getDataPostsHtml(params) {
     var body, status;
@@ -785,15 +831,66 @@ function getDataPostsHtml(params) {
     // b) For each of the upvotes above, download the content it references.
     // c) Filter the list to only those containing "~parent($hash)"
 
-    refreshPeerContent(sessionGet(params, 'username'),
-                       function () {
-                           sendResponse(params, { status: 200, body: 'hiya' });
-                           return;
-                           // only upvotes signed by keyids which we are following
-                           upvotesList = getCurrentUpvotes();
-                           contents = map(downloadUpvotedContent, upvotesList);
-                           posts = filter(isChildPostOf(hash), contents);
-                           //print(posts)
+    var username = sessionGet(params, 'username');
+    refreshPeerContent(username,
+                       // lists contains all of the newly discovered
+                       // hashes (possibly with duplicates)
+                       function (lists) {
+
+                           var waiting = 0;
+                           var child_posts = [];
+
+                           function sendFinal() {
+                               var html = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style"></head><body>';
+                               var posts = Object.keys(user_posts[username][hash]);
+                               for (var k = 0, klen = posts.length; k < klen; ++k) {
+                                   html += '<a class="hash" href="/posts/' + posts[k] + '">' + posts[k] + '</a>';
+                               }
+                               html += '</body></html>';
+                               sendResponse(params, { status: 200, body: html });
+                           }
+
+                           function fetchedItem(hex, data) {
+                               --waiting;
+
+                               var parent = getPostParent(hex);
+
+                               if (parent === hash) {
+                                   child_posts.push(hex);
+                               }
+
+                               if (waiting === 0) {
+                                   if (!(username in user_posts)) {
+                                       user_posts[username] = {};
+                                   }
+                                   if (!(hash in user_posts[username])) {
+                                       user_posts[username][hash] = {};
+                                   }
+
+                                   for (var k = 0, klen = child_posts.length; k < klen; ++k) {
+                                       user_posts[username][hash][child_posts[k]] = true;
+                                   }
+
+                                   sendFinal();
+                               }
+                           }
+
+                           for (var i = 0, len = lists.length; i < len; ++i) {
+                               for (var j = 0, jlen = lists[i].length; j < jlen; ++j) {
+                                   var upvoted = getUpvoted(lists[i][j]);
+                                   if (upvoted !== null) {
+                                       // TODO: actually verify the signature
+                                       if (true || verifySignature(upvoted)) {
+                                           ++waiting;
+                                           getDataItemAndIndex(upvoted, fetchedItem);
+                                       }
+                                   }
+                               }
+                           }
+
+                           if (waiting === 0) {
+                               sendFinal();
+                           }
                        });
 }
 
