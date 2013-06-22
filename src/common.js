@@ -41,7 +41,7 @@ var crypto = require('crypto');
 
 // 80 -> upgrade_success -> 443
 // 80 -> upgrade_failed -> 81
-// 443 -> sslstrip -> 81
+// 443 -> STUD (or HAProxy SSL?) -> 81
 // 81 -> HAProxy -> 101-10X where X is number of processors
 // (Possibility also to route to 192.168.0.N:10X for even more processes)
 
