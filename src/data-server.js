@@ -164,13 +164,13 @@ function postLogin(params) {
                      authenticate_continue(params, uparams.username));
     }
 
-    function postLoginData(buf) {
-        str += buf;
+    function postLoginData() {
+        str += params.request.read();
     }
 
     params.result.setEncoding('utf8');
     params.request.on('end', postLoginEnd);
-    params.request.on('data', postLoginData);
+    params.request.on('readable', postLoginData);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -483,13 +483,13 @@ function postDataItem(params) {
         shasum.end();
     }
 
-    function postDataItemData(buf) {
-        str += buf;
+    function postDataItemData() {
+        str += params.request.read();
     }
 
     params.request.setEncoding('utf8');
     params.request.on('end', postDataItemEnd);
-    params.request.on('data', postDataItemData);
+    params.request.on('readable', postDataItemData);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -233,8 +233,8 @@ function getDataList(references, cont) {
         res.setEncoding('utf8');
 
         var ch = '';
-        res.on('data', function (chunk) {
-            ch += chunk;
+        res.on('readable', function () {
+            ch += res.read();
         });
         res.on('end', function () {
             var ret;
@@ -294,8 +294,8 @@ function getDataItem(hex, cont) {
         res.setEncoding('utf8');
 
         var ch = '';
-        res.on('data', function (chunk) {
-            ch += chunk;
+        res.on('readable', function () {
+            ch += res.read();
         });
         res.on('end', function () {
             if ((res.statusCode >= 200) && (res.statusCode <= 299)) {
@@ -531,13 +531,13 @@ function postLogin(params) {
                      authenticate_continue(params, uparams.username));
     }
 
-    function postLoginData(buf) {
-        str += buf;
+    function postLoginData() {
+        str += params.request.read();
     }
 
     params.request.setEncoding('utf8');
     params.request.on('end', postLoginEnd);
-    params.request.on('data', postLoginData);
+    params.request.on('readable', postLoginData);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -602,13 +602,13 @@ function putDataItem(params) {
         var uparams = url.parse('?' + str, true).query;
     }
 
-    function putDataItemData(buf) {
-        str += buf;
+    function putDataItemData() {
+        str += params.request.read();
     }
 
     params.request.setEncoding('utf8');
     params.request.on('end', putDataItemEnd);
-    params.request.on('data', putDataItemData);
+    params.request.on('readable', putDataItemData);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
