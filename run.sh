@@ -1,7 +1,7 @@
 #!/bin/bash
 
 function dokill() {
-	kill $frontserv_pid
+	kill $dataserver_pid
 	kill $ui_pid
 	kill $tailf_pid
 }
@@ -9,7 +9,7 @@ function dokill() {
 trap dokill SIGINT SIGKILL
 
 mkdir -p var/{log,gpg}
-logfiles="var/log/frontserv-stderr var/log/frontserv-stdout var/log/ui-stderr var/log/ui-stdout var/log/applog"
+logfiles="var/log/data-server-stderr var/log/data-server-stdout var/log/ui-stderr var/log/ui-stdout var/log/applog"
 touch $logfiles
 tail -F -n 0 $logfiles &
 tailf_pid=$!
@@ -20,8 +20,8 @@ else
     nodeprog=node
 fi
 
-$nodeprog target/frontserv.jsmacro.js 2>>var/log/frontserv-stderr >>var/log/frontserv-stdout &
-frontserv_pid=$!
+$nodeprog target/data-server.jsmacro.js 2>>var/log/data-server-stderr >>var/log/data-server-stdout &
+dataserver_pid=$!
 $nodeprog target/ui.jsmacro.js 2>>var/log/ui-stderr >>var/log/ui-stdout &
 ui_pid=$!
 

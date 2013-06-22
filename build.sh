@@ -3,7 +3,7 @@
 printf 'building\n' >&2
 
 mkdir -p target
-python tools/jsmacro/jsmacro.py -f src/frontserv.js >target/frontserv.jsmacro.js
+python tools/jsmacro/jsmacro.py -f src/data-server.js >target/data-server.jsmacro.js
 python tools/jsmacro/jsmacro.py -f src/ui.js >target/ui.jsmacro.js
 
 printf 'built\n' >&2
