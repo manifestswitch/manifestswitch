@@ -217,7 +217,7 @@ function getHomePagePlain(params) {
 
     body = '';
     body += 'GET /data?first=$uint&count=$uint\n';
-    body += 'PUT /data{content=$utf8}\n';
+    body += 'POST /data{content=$utf8}\n';
     body += 'GET /data/$sha256hex\n';
     body += 'POST /login{username=$utf8&password=$utf8}\n';
 
@@ -381,7 +381,6 @@ function getDataListHtml(params) {
 
 function getDataFormHtml(params) {
     var body = ('    <form action="/data" method="POST">\n' +
-                '      <input type="hidden" name="_method" value="PUT">\n' +
                 '      <textarea name="content"></textarea>\n' +
                 '      <input value="submit" type="submit">\n' +
                 '    </form>\n');
@@ -418,16 +417,16 @@ function getDataFormHtml(params) {
 
 // Note, should result in a valid 201 on success.
 // Or could do 202 to allow batching?
-function putDataItem(params) {
-    var str = '';
+function postDataItem(params) {
+    var shasum, uparams, str = '';
 
-    function putDataItemEnd() {
-        var shasum = crypto.createHash('sha256');
-        var uparams = url.parse('?' + str, true).query;
-        var hex, alreadyHas = null, newdata;
+    function shasumRead() {
+        var alreadyHas = null, newdata;
+        var hex = shasum.read(64);
 
-        shasum.update(uparams.content);
-        hex = shasum.digest('hex');
+        if (hex === null) {
+            return;
+        }
 
         if (hex in hashed_by) {
             alreadyHas = hashed_by[hex];
@@ -475,13 +474,22 @@ function putDataItem(params) {
         }
     }
 
-    function putDataItemData(buf) {
-        // TODO: take purported encoding from req object
-        str += buf.toString();
+    function postDataItemEnd() {
+        uparams = url.parse('?' + str, true).query;
+        shasum = crypto.createHash('sha256');
+        shasum.setEncoding('hex');
+        shasum.on('readable', shasumRead);
+        shasum.write(uparams.content);
+        shasum.end();
     }
 
-    params.request.on('end', putDataItemEnd);
-    params.request.on('data', putDataItemData);
+    function postDataItemData(buf) {
+        str += buf;
+    }
+
+    params.request.setEncoding('utf8');
+    params.request.on('end', postDataItemEnd);
+    params.request.on('data', postDataItemData);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -762,8 +770,7 @@ var places_exact = {
             { type: 'text/plain', action: getDataListPlain },
             { type: 'text/html', action: getDataListHtml }
         ],
-        'PUT': putDataItem,
-        'POST': putDataItem
+        'POST': postDataItem
     },
 
     '/data/form': {
@@ -864,6 +871,8 @@ var places_regex = [
                 { type: 'text/plain', action: getDataItemPlain },
                 { type: 'text/html', action: getDataItemHtml }
             ]
+            // TODO: support PUT
+            //, 'PUT': putDataItem
         }
     }
 ];
