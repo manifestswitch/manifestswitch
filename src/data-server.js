@@ -168,7 +168,7 @@ function postLogin(params) {
         str += params.request.read();
     }
 
-    params.result.setEncoding('utf8');
+    params.request.setEncoding('utf8');
     params.request.on('end', postLoginEnd);
     params.request.on('readable', postLoginData);
 }
