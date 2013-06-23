@@ -874,7 +874,9 @@ function getDataPostsHtml(params) {
                                        html += '<a class="hash" href="/posts/' + posts[k] + '">' + posts[k] + '</a>';
                                    }
                                }
-                               html += '</body></html>';
+                               html += '<div><a href="/posts/form">Add</a></div>';
+                               html += '<div><a href="/">Home</a></div></body></html>';
+
                                sendResponse(params, { status: 200, body: html });
                            }
 
@@ -946,6 +948,17 @@ function getStyleCss(params) {
     sendResponse(params, { status: 200, body: '.hash { font-family: monospace; }' });
 }
 
+function getFaviconIco(params) {
+    params.contentType = 'image/x-icon';
+    // 30 days
+    params.headers['Cache-Control'] = 'max-age=2592000';
+    sendRawResponse(params,
+                 {
+                     status: 200,
+                     body: new Buffer('AAABAAEAEBACAAEAAQCwAAAAFgAAACgAAAAQAAAAIAAAAAEAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD///8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', 'base64')
+                 });
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 var APP_PORT = 1338;
@@ -1002,6 +1015,12 @@ var places_exact = {
     '/style': {
         'GET': [
             { type: 'text/css', action: getStyleCss }
+        ]
+    },
+
+    '/favicon.ico': {
+        'GET': [
+            { type: 'image/x-icon', action: getFaviconIco }
         ]
     },
 

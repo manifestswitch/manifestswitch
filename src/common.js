@@ -337,6 +337,26 @@ function sendResponse(params, rv) {
     trace((new Date()).getTime() + '\t' + 'response.end');
 }
 
+function sendRawResponse(params, rv) {
+    if (rv.contentType) {
+        params.contentType = rv.contentType;
+    }
+    if (params.contentType !== null) {
+        params.headers['Content-Type'] = params.contentType;
+    }
+    params.headers['Content-Length'] = rv.body.length;
+    params.headers["Set-Cookie"] = cookiesToList(params.cookies);
+    params.response.writeHead(rv.status, params.headers);
+
+    if (params.request.method === 'HEAD') {
+        params.response.end();
+    } else {
+        params.response.end(rv.body);
+    }
+
+    trace((new Date()).getTime() + '\t' + 'response.end');
+}
+
 function redirectTo(params, location) {
     var body;
 

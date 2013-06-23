@@ -754,6 +754,17 @@ function getStyleCss(params) {
     sendResponse(params, { status: 200, body: '.hash { font-family: monospace; }' });
 }
 
+function getFaviconIco(params) {
+    params.contentType = 'image/x-icon';
+    // 30 days
+    params.headers['Cache-Control'] = 'max-age=2592000';
+    sendRawResponse(params,
+                 {
+                     status: 200,
+                     body: new Buffer('AAABAAEAEBACAAEAAQCwAAAAFgAAACgAAAAQAAAAIAAAAAEAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD///8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', 'base64')
+                 });
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 var APP_PORT = 1337;
@@ -817,6 +828,12 @@ var places_exact = {
     '/style': {
         'GET': [
             { type: 'text/css', action: getStyleCss }
+        ]
+    },
+
+    '/favicon.ico': {
+        'GET': [
+            { type: 'image/x-icon', action: getFaviconIco }
         ]
     },
 
