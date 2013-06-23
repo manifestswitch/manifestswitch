@@ -316,7 +316,7 @@ function getDataList(params) {
         first = Math.max(0, source.length - count);
     }
 
-    return source.slice(first, first + count);
+    return { list: source.slice(first, first + count), total: source.length };
 }
 
 function getDataListPlain(params) {
@@ -324,10 +324,11 @@ function getDataListPlain(params) {
     var body = '', status;
 
     if (rv !== null) {
-        for (var i = 0, len = rv.length; i < len; ++i) {
-            body += rv[i].hash + '\n';
+        for (var i = 0, len = rv.list.length; i < len; ++i) {
+            body += rv.list[i].hash + '\n';
         }
         status = 200;
+        params.headers['X-Total'] = rv.total;
     } else {
         body = '400: Bad Request: Could not parse query parameters.';
         status = 400;
@@ -341,11 +342,12 @@ function getDataListJson(params) {
     var body = '{ "status": 200, "result": "OK", "items": [\n', status;
 
     if (rv !== null) {
-        for (var i = 0, len = rv.length; i < len; ++i) {
-            body += '{ "hash": "' + rv[i].hash + '" },\n';
+        for (var i = 0, len = rv.list.length; i < len; ++i) {
+            body += '{ "hash": "' + rv.list[i].hash + '" },\n';
         }
         body += ']}\n';
         status = 200;
+        params.headers['X-Total'] = rv.total;
 
     } else {
         body = '{ "status": 400, "result": "Bad Request", "code": 1, "message": "Could not parse query parameters." }';
@@ -360,14 +362,15 @@ function getDataListHtml(params) {
     var body = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style"></head><body><ol>\n', status;
 
     if (rv !== null) {
-        for (var i = 0, len = rv.length; i < len; ++i) {
-            body += '<li><a class="hash" href="/data/' + rv[i].hash + '">' + rv[i].hash + '</a></li>\n';
+        for (var i = 0, len = rv.list.length; i < len; ++i) {
+            body += '<li><a class="hash" href="/data/' + rv.list[i].hash + '">' + rv.list[i].hash + '</a></li>\n';
         }
 
         body += '</ol>\n';
         body += '<div><a href="/data/form">Add</a></div>';
         body += '<div><a href="/">Home</a></div></body></html>';
         status = 200;
+        params.headers['X-Total'] = rv.total;
 
     } else {
         body = '<h1>400: Bad Request: Could not parse query parameters.</h1><a href="/data">Continue</a>';
