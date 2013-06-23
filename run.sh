@@ -13,7 +13,7 @@ function dokill() {
 trap dokill SIGINT SIGKILL
 
 mkdir -p var/{log,gpg}
-logfiles="var/log/data-server-stderr var/log/data-server-stdout var/log/ui-server-stderr var/log/ui-server-stdout var/log/applog"
+logfiles="var/log/data-server-stderr var/log/data-server-stdout var/log/ui-server-stderr var/log/ui-server-stdout var/log/data-server-stud-stderr var/log/data-server-stud-stdout var/log/ui-server-stud-stderr var/log/ui-server-stud-stdout var/log/applog"
 touch $logfiles
 tail -F -n 0 $logfiles &
 tailf_pid=$!
@@ -29,9 +29,9 @@ dataserver_pid=$!
 $nodeprog target/ui-server.jsmacro.js 2>>var/log/ui-server-stderr >>var/log/ui-server-stdout &
 uiserver_pid=$!
 
-stud --ssl -f '*,7443' -b 127.0.0.1,1337 var/cert/server.pem &
+stud --ssl -f '*,7443' -b 127.0.0.1,1337 var/cert/server.pem 2>>var/log/data-server-stud-stderr >>var/log/data-server-stud-stdout &
 dataserver_stud_pid=$!
-stud --ssl -f '*,8443' -b 127.0.0.1,1338 var/cert/server.pem &
+stud --ssl -f '*,8443' -b 127.0.0.1,1338 var/cert/server.pem 2>>var/log/ui-server-stud-stderr >>var/log/ui-server-stud-stdout &
 uiserver_stud_pid=$!
 
 printf 'running\n' >&2
