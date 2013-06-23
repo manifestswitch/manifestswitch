@@ -866,7 +866,7 @@ function getDataPostsHtml(params) {
                            var child_posts = [];
 
                            function sendFinal() {
-                               var html = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style"></head><body>';
+                               var html = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body>';
                                var posts;
                                if ((username in user_posts) && (hash in user_posts[username])) {
                                    posts = Object.keys(user_posts[username][hash]);
@@ -945,6 +945,8 @@ function getPostItemHtml(params) {
 }
 
 function getStyleCss(params) {
+    // 365 days
+    params.headers['Cache-Control'] = 'max-age=31536000';
     sendResponse(params, { status: 200, body: '.hash { font-family: monospace; }' });
 }
 

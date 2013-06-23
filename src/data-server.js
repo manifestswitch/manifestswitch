@@ -359,7 +359,7 @@ function getDataListJson(params) {
 
 function getDataListHtml(params) {
     var rv = getDataList(params);
-    var body = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style"></head><body><ol>\n', status;
+    var body = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body><ol>\n', status;
 
     if (rv !== null) {
         for (var i = 0, len = rv.list.length; i < len; ++i) {
@@ -751,6 +751,8 @@ function getLogoutResultHtml(params) {
 }
 
 function getStyleCss(params) {
+    // 365 days
+    params.headers['Cache-Control'] = 'max-age=31536000';
     sendResponse(params, { status: 200, body: '.hash { font-family: monospace; }' });
 }
 
