@@ -1,11 +1,13 @@
 #!/bin/bash
 
 function dokill() {
+	printf 'killing\n' >&2
 	kill $dataserver_stud_pid
 	kill $uiserver_stud_pid
 	kill $dataserver_pid
 	kill $uiserver_pid
 	kill $tailf_pid
+	printf 'killed\n' >&2
 }
 
 trap dokill SIGINT SIGKILL
