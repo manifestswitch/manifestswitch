@@ -1,6 +1,8 @@
 #!/bin/bash
 
 function dokill() {
+	kill $dataserver_stud_pid
+	kill $uiserver_stud_pid
 	kill $dataserver_pid
 	kill $uiserver_pid
 	kill $tailf_pid
@@ -24,6 +26,11 @@ $nodeprog target/data-server.jsmacro.js 2>>var/log/data-server-stderr >>var/log/
 dataserver_pid=$!
 $nodeprog target/ui-server.jsmacro.js 2>>var/log/ui-server-stderr >>var/log/ui-server-stdout &
 uiserver_pid=$!
+
+stud --ssl -f '*,7443' -b 127.0.0.1,1337 var/cert/server.pem &
+dataserver_stud_pid=$!
+stud --ssl -f '*,8443' -b 127.0.0.1,1338 var/cert/server.pem &
+uiserver_stud_pid=$!
 
 printf 'running\n' >&2
 

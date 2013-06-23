@@ -39,7 +39,7 @@ sessionGet,
 sendResponse,
 htmlEscape,
 async_log,
-http,
+https,
 getJson404,
 getPlain404,
 getHtml404,
@@ -57,6 +57,7 @@ main;
 //@include common.js
 //@end
 
+var https = require('https');
 var child_process = require('child_process');
 
 /*
@@ -221,13 +222,17 @@ function getDataList(references, cont) {
 
     var options = {
         hostname: hostname,
-        port: 1337,
+        port: 7443,
         path: basePath + '&first=' + offsets[source],
         method: 'GET',
         headers: { Accept: 'text/plain' }
     };
 
-    var req = http.request(options, function(res) {
+    if (hostname === '127.0.0.1') {
+        options.rejectUnauthorized = false;
+    }
+
+    var req = https.request(options, function(res) {
         async_log('STATUS: ' + res.statusCode);
         async_log('HEADERS: ' + JSON.stringify(res.headers));
         res.setEncoding('utf8');
@@ -282,13 +287,17 @@ function getDataItem(hex, cont) {
 
     var options = {
         hostname: '127.0.0.1',
-        port: 1337,
+        port: 7443,
         path: '/data/' + hex,
         method: 'GET',
         headers: { Accept: 'text/plain' }
     };
 
-    var req = http.request(options, function(res) {
+    if (hostname === '127.0.0.1') {
+        options.rejectUnauthorized = false;
+    }
+
+    var req = https.request(options, function(res) {
         async_log('STATUS: ' + res.statusCode);
         async_log('HEADERS: ' + JSON.stringify(res.headers));
         res.setEncoding('utf8');
