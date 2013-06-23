@@ -214,9 +214,8 @@ function cookiesToList(cookies) {
     var parts = [], i = 0;
 
     for (var x in cookies) {
-        // TODO: secure
         // TODO: path=/;
-        parts[i++] = x + '=' + cookies[x].value + '; HttpOnly';
+        parts[i++] = x + '=' + cookies[x].value + '; HttpOnly; Secure';
     }
     return parts;
 }
