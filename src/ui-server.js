@@ -302,29 +302,45 @@ function getDataItem(hex, cont) {
         async_log('HEADERS: ' + JSON.stringify(res.headers));
         res.setEncoding('utf8');
 
-        var ch = '';
+        var ch = '', shasum;
+
+        function shasumFinish() {
+            for (var i = 0, len = currentlyFetchingItems[hex].length; i < len; ++i) {
+                currentlyFetchingItems[hex][i](hex, ch);
+            }
+            delete currentlyFetchingItems[hex];
+        }
+
+        function shasumRead() {
+            var digest = shasum.read(64);
+
+            if (digest === null) {
+                return;
+            }
+
+            if (digest !== hex) {
+                // this would be a good point to fail over to another data
+                // service
+                ch = null;
+            }
+
+            shasumFinish();
+        }
+
         res.on('readable', function () {
             ch += res.read();
         });
         res.on('end', function () {
             if ((res.statusCode >= 200) && (res.statusCode <= 299)) {
-                var shasum = crypto.createHash('sha256');
-                shasum.update(ch);
-                var digest = shasum.digest('hex');
-
-                if (digest !== hex) {
-                    // this would be a good point to fail over to another data
-                    // service
-                    ch = null;
-                }
+                shasum = crypto.createHash('sha256');
+                shasum.setEncoding('hex');
+                shasum.on('readable', shasumRead);
+                shasum.write(ch);
+                shasum.end();
             } else {
                 ch = null
+                shasumFinish();
             }
-
-            for (var i = 0, len = currentlyFetchingItems[hex].length; i < len; ++i) {
-                currentlyFetchingItems[hex][i](hex, ch);
-            }
-            delete currentlyFetchingItems[hex];
         });
     });
 
