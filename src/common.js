@@ -327,7 +327,12 @@ function sendResponse(params, rv) {
     params.headers['Content-Length'] = Buffer.byteLength(rv.body, 'utf8');
     params.headers["Set-Cookie"] = cookiesToList(params.cookies);
     params.response.writeHead(rv.status, params.headers);
-    params.response.end(rv.body);
+
+    if (params.request.method === 'HEAD') {
+        params.response.end();
+    } else {
+        params.response.end(rv.body);
+    }
 
     trace((new Date()).getTime() + '\t' + 'response.end');
 }
@@ -562,6 +567,7 @@ function doError(params, n) {
 
 function domainRunFunction(req, res) {
     return function () {
+        var method;
         var params = {
             request: req,
             response: res,
@@ -601,7 +607,13 @@ function domainRunFunction(req, res) {
                 doError(params, 404);
                 return;
             }
-            if (!(req.method in params.place)) {
+
+            if ((req.method === 'HEAD') && !('HEAD' in params.place)) {
+                method = 'GET';
+            } else {
+                method = req.method;
+            }
+            if (!(method in params.place)) {
                 doError(params, 405);
                 return;
             }
@@ -610,14 +622,14 @@ function domainRunFunction(req, res) {
                 params.place[req.method](params);
 
             } else {
-                params.contentType = preferredOutput(req.headers.accept, params.place[req.method].types);
+                params.contentType = preferredOutput(req.headers.accept, params.place[method].types);
 
                 if (params.contentType === null) {
                     doError(params, 406);
                     return;
                 }
 
-                params.place[req.method].actions[params.contentType](params);
+                params.place[method].actions[params.contentType](params);
             }
 
         } catch (e) {
