@@ -18,8 +18,8 @@ touch $logfiles
 tail -F -n 0 $logfiles &
 tailf_pid=$!
 
-if [ -x ./tools/node/bin/node ]; then
-    nodeprog=./tools/node/bin/node
+if [ -x ./tools/node/node ]; then
+    nodeprog=./tools/node/node
 else
     nodeprog=node
 fi
