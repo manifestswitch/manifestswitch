@@ -139,6 +139,9 @@ future, find or make a library to do this efficiently.
 
 ////////////////////////////////////////////////////////////////////////////////
 
+var ui_server_css = '.hash { font-family: monospace; }';
+var ui_server_css_gzip = new Buffer('H4sICIuczFECA2RhdGEtc2VydmVyLmNzcwDTy0gszlCoVkjLzyvRTUvMzcyptFLIzc/LLy5ITE61VqjlAgB3ZlLSIgAAAA==', 'base64');
+
 var userdb = [
     { 'username': 'user', 'password': 'pass', 'gpgdir': 'var/gpg/user' },
     { 'username': 'user2', 'password': 'pass', 'gpgdir': 'var/gpg/user2' }
@@ -947,18 +950,16 @@ function getPostItemHtml(params) {
 function getStyleCss(params) {
     // 365 days
     params.headers['Cache-Control'] = 'max-age=31536000';
-    sendResponse(params, { status: 200, body: '.hash { font-family: monospace; }' });
+    // TODO: pre gzip -9 this into a new Buffer
+    sendResponse(params, { status: 200, body: ui_server_css });
 }
 
 function getFaviconIco(params) {
     params.contentType = 'image/x-icon';
     // 30 days
     params.headers['Cache-Control'] = 'max-age=2592000';
-    sendRawResponse(params,
-                 {
-                     status: 200,
-                     body: new Buffer('AAABAAEAEBACAAEAAQCwAAAAFgAAACgAAAAQAAAAIAAAAAEAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD///8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', 'base64')
-                 });
+    // TODO: use blank_favicon_gz where possible
+    sendRawResponse(params, { status: 200, body: blank_favicon });
 }
 
 ////////////////////////////////////////////////////////////////////////////////

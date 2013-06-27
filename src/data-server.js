@@ -61,6 +61,9 @@ main;
 //@include common.js
 //@end
 
+var data_server_css = '.hash { font-family: monospace; }';
+var data_server_css_gzip = new Buffer('H4sICIuczFECA2RhdGEtc2VydmVyLmNzcwDTy0gszlCoVkjLzyvRTUvMzcyptFLIzc/LLy5ITE61VqjlAgB3ZlLSIgAAAA==', 'base64');
+
 var datadb = [
     { hash: 'caf3af6d893b5cb8eae9a90a3054f370a92130863450e3299d742c7a65329d94', content: 'boo\n', gone: false },
     { hash: '7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730', content: 'bar\n', gone: true },
@@ -753,18 +756,16 @@ function getLogoutResultHtml(params) {
 function getStyleCss(params) {
     // 365 days
     params.headers['Cache-Control'] = 'max-age=31536000';
-    sendResponse(params, { status: 200, body: '.hash { font-family: monospace; }' });
+    // TODO: pre gzip -9 this into a new Buffer
+    sendResponse(params, { status: 200, body: data_server_css });
 }
 
 function getFaviconIco(params) {
     params.contentType = 'image/x-icon';
     // 30 days
     params.headers['Cache-Control'] = 'max-age=2592000';
-    sendRawResponse(params,
-                 {
-                     status: 200,
-                     body: new Buffer('AAABAAEAEBACAAEAAQCwAAAAFgAAACgAAAAQAAAAIAAAAAEAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD///8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', 'base64')
-                 });
+    // TODO: use blank_favicon_gz where possible
+    sendRawResponse(params, { status: 200, body: blank_favicon });
 }
 
 ////////////////////////////////////////////////////////////////////////////////
