@@ -931,7 +931,7 @@ function gotPostItem(params) {
 function getPostItemHtml(params) {
     var hash = params.urlparts.pathname.substring('/post/'.length);
 
-    getDataItem(hash, gotPostItem(params));
+    getDataItemAndIndex(hash, gotPostItem(params));
 }
 
 function getStyleCss(params) {
