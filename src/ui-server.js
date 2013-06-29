@@ -569,7 +569,7 @@ function getLoginResultPlain(params) {
         status = 403;
         body = '403 Forbidden: Login failed';
     }
-    sendResponse(params, { status: status, body: body });
+    sendResponse(params, status, body);
 }
 
 function getLoginResultJson(params) {
@@ -581,7 +581,7 @@ function getLoginResultJson(params) {
         status = 403;
         body = '{ "status": 403, "result": "Forbidden", "message": "Login failed" }';
     }
-    sendResponse(params, { status: status, body: body });
+    sendResponse(params, status, body);
 }
 
 function getLoginResultHtml(params) {
@@ -593,7 +593,7 @@ function getLoginResultHtml(params) {
         status = 403;
         body = '<h1>403 Forbidden: Login failed</h1><a href="/">Continue</a>';
     }
-    sendResponse(params, { status: status, body: body });
+    sendResponse(params, status, body);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -615,7 +615,7 @@ function getLogoutResultPlain(params) {
         status = 500;
         body = '500 Internal Server Error: Logout failed';
     }
-    sendResponse(params, { status: status, body: body });
+    sendResponse(params, status, body);
 }
 
 function getLogoutResultJson(params) {
@@ -627,7 +627,7 @@ function getLogoutResultJson(params) {
         status = 500;
         body = '{ "status": 500, "result": "Internal Server Error", "message": "Logout failed" }';
     }
-    sendResponse(params, { status: status, body: body });
+    sendResponse(params, status, body);
 }
 
 function getLogoutResultHtml(params) {
@@ -639,7 +639,7 @@ function getLogoutResultHtml(params) {
         status = 500;
         body = '<h1>500 Internal Server Error: Logout failed</h1><a href="/">Continue</a>';
     }
-    sendResponse(params, { status: status, body: body });
+    sendResponse(params, status, body);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -684,7 +684,7 @@ function getHomePageHtml(params) {
             '  </body>\n' +
             '</html>');
 
-    sendResponse(params, { status: 200, body: body });
+    sendResponse(params, 200, body);
 }
 
 /*
@@ -745,7 +745,7 @@ list rated: same as above, but sorted by friend's upvotes within a time period
 function getPostsDataListContinue (data) {
     status = 200;
     body = '<h1>200 OK: Page here: ' + data + '</h1><a href="/">Continue</a>';
-    sendResponse(params, { status: status, body: body });
+    sendResponse(params, status, body);
 }
 
 // If there is an upvote, returns the thing being upvoted
@@ -801,7 +801,7 @@ function getDataPostsHtml(params) {
     if (sessionGet(params, 'usename') === null) {
         status = 403;
         body = '<h1>403 Forbidden: You must be logged in </h1><a href="/">Continue</a>';
-        sendResponse(params, { status: status, body: body });
+        sendResponse(params, status, body);
         return;
     }
 
@@ -845,7 +845,7 @@ function getDataPostsHtml(params) {
                                html += '<div><a href="/posts/form?parent=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855">Add</a></div>';
                                html += '<div><a href="/">Home</a></div></body></html>';
 
-                               sendResponse(params, { status: 200, body: html });
+                               sendResponse(params, 200, html);
                            }
 
                            function fetchedItem(hex, data) {
@@ -896,7 +896,7 @@ function getPostsFormHtml(params) {
     var query = url.parse(params.request.url, true).query;
     if (!('parent' in query) || !looksLikeSha(query.parent)) {
         // TODO: prettier error handling
-        sendResponse(params, { status: 400, body: 'Doesnt look like a SHA' });
+        sendResponse(params, 400, 'Doesnt look like a SHA');
         return;
     }
     var body = ('<!DOCTYPE html><html><head></head><body>' +
@@ -908,21 +908,21 @@ function getPostsFormHtml(params) {
 
     body += '<a href="/posts">Back</a>';
 
-    sendResponse(params, { status: 200, body: body });
+    sendResponse(params, 200, body);
 }
 
 function getPostItemHtml(params) {
     var body = ('    <h1>Hello</h1>');
     body += '<a href="/posts">Back</a>';
 
-    sendResponse(params, { status: 200, body: body });
+    sendResponse(params, 200, body);
 }
 
 function getStyleCss(params) {
     // 365 days
     params.headers['Cache-Control'] = 'max-age=31536000';
     // TODO: pre gzip -9 this into a new Buffer
-    sendResponse(params, { status: 200, body: ui_server_css });
+    sendResponse(params, 200, ui_server_css);
 }
 
 function getFaviconIco(params) {
@@ -930,7 +930,7 @@ function getFaviconIco(params) {
     // 30 days
     params.headers['Cache-Control'] = 'max-age=2592000';
     // TODO: use blank_favicon_gz where possible
-    sendRawResponse(params, { status: 200, body: blank_favicon });
+    sendRawResponse(params, 200, blank_favicon);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

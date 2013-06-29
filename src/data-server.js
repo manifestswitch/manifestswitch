@@ -202,7 +202,7 @@ function getHomePageHtml(params) {
             '  </body>\n' +
             '</html>');
 
-    sendResponse(params, { status: 200, body: body });
+    sendResponse(params, 200, body);
 }
 
 function getHomePagePlain(params) {
@@ -214,7 +214,7 @@ function getHomePagePlain(params) {
     body += 'GET /data/$sha256hex\n';
     body += 'POST /login{username=$utf8&password=$utf8}\n';
 
-    sendResponse(params, { status: 200, body: body });
+    sendResponse(params, 200, body);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -327,7 +327,7 @@ function getDataListPlain(params) {
         status = 400;
     }
 
-    sendResponse(params, { status: status, body: body });
+    sendResponse(params, status, body);
 }
 
 function getDataListJson(params) {
@@ -347,7 +347,7 @@ function getDataListJson(params) {
         status = 400;
     }
 
-    sendResponse(params, { status: status, body: body });
+    sendResponse(params, status, body);
 }
 
 function getDataListHtml(params) {
@@ -370,7 +370,7 @@ function getDataListHtml(params) {
         status = 400;
     }
 
-    sendResponse(params, { status: status, body: body });
+    sendResponse(params, status, body);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -383,7 +383,7 @@ function getDataFormHtml(params) {
 
     body += '<a href="/data">Back</a>';
 
-    sendResponse(params, { status: 200, body: body });
+    sendResponse(params, 200, body);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -516,7 +516,7 @@ function getDataItemPlain(params) {
         body = rv.content;
     }
 
-    sendResponse(params, { status: status, body: body });
+    sendResponse(params, status, body);
 }
 
 function getDataItemJson(params) {
@@ -534,7 +534,7 @@ function getDataItemJson(params) {
         body = JSON.stringify({ status: 200, result: "OK", content: rv.content });
     }
 
-    sendResponse(params, { status: status, body: body });
+    sendResponse(params, status, body);
 }
 
 function getDataItemHtml(params) {
@@ -552,7 +552,7 @@ function getDataItemHtml(params) {
         body = '<!DOCTYPE html><html><head></head><body><h1>200: OK</h1><pre>' + htmlEscape(rv.content) + '</pre><a href="/data">Continue</a></body></html>';
     }
 
-    sendResponse(params, { status: status, body: body });
+    sendResponse(params, status, body);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -610,7 +610,7 @@ function getDataResultPlain(params) {
             body = '201 Created: Data successfully added\n/data/' + rv.hash + '\n';
         }
     }
-    sendResponse(params, { status: status, body: body });
+    sendResponse(params, status, body);
 }
 
 function getDataResultJson(params) {
@@ -637,7 +637,7 @@ function getDataResultJson(params) {
             body = '{ "status": 201, "result": "Created", "message": "Data successfully added", "sha256": "' + rv.hash + '", "uri": "/data/' + rv.hash + '" }';
         }
     }
-    sendResponse(params, { status: status, body: body });
+    sendResponse(params, status, body);
 }
 
 function getDataResultHtml(params) {
@@ -664,7 +664,7 @@ function getDataResultHtml(params) {
             body = '<h1>201 Created: Data successfully added</h1><a href="/data/' + rv.hash + '">' + rv.hash + '</a><div><a href="/data">Continue</a></div>';
         }
     }
-    sendResponse(params, { status: status, body: body });
+    sendResponse(params, status, body);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -678,7 +678,7 @@ function getLoginResultPlain(params) {
         status = 403;
         body = '403 Forbidden: Login failed';
     }
-    sendResponse(params, { status: status, body: body });
+    sendResponse(params, status, body);
 }
 
 function getLoginResultJson(params) {
@@ -690,7 +690,7 @@ function getLoginResultJson(params) {
         status = 403;
         body = '{ "status": 403, "result": "Forbidden", "message": "Login failed" }';
     }
-    sendResponse(params, { status: status, body: body });
+    sendResponse(params, status, body);
 }
 
 function getLoginResultHtml(params) {
@@ -702,7 +702,7 @@ function getLoginResultHtml(params) {
         status = 403;
         body = '<h1>403 Forbidden: Login failed</h1><a href="/">Continue</a>';
     }
-    sendResponse(params, { status: status, body: body });
+    sendResponse(params, status, body);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -716,7 +716,7 @@ function getLogoutResultPlain(params) {
         status = 500;
         body = '500 Internal Server Error: Logout failed';
     }
-    sendResponse(params, { status: status, body: body });
+    sendResponse(params, status, body);
 }
 
 function getLogoutResultJson(params) {
@@ -728,7 +728,7 @@ function getLogoutResultJson(params) {
         status = 500;
         body = '{ "status": 500, "result": "Internal Server Error", "message": "Logout failed" }';
     }
-    sendResponse(params, { status: status, body: body });
+    sendResponse(params, status, body);
 }
 
 function getLogoutResultHtml(params) {
@@ -740,14 +740,14 @@ function getLogoutResultHtml(params) {
         status = 500;
         body = '<h1>500 Internal Server Error: Logout failed</h1><a href="/">Continue</a>';
     }
-    sendResponse(params, { status: status, body: body });
+    sendResponse(params, status, body);
 }
 
 function getStyleCss(params) {
     // 365 days
     params.headers['Cache-Control'] = 'max-age=31536000';
     // TODO: pre gzip -9 this into a new Buffer
-    sendResponse(params, { status: 200, body: data_server_css });
+    sendResponse(params, 200, data_server_css);
 }
 
 function getFaviconIco(params) {
@@ -755,7 +755,7 @@ function getFaviconIco(params) {
     // 30 days
     params.headers['Cache-Control'] = 'max-age=2592000';
     // TODO: use blank_favicon_gz where possible
-    sendRawResponse(params, { status: 200, body: blank_favicon });
+    sendRawResponse(params, 200, blank_favicon);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

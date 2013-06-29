@@ -348,11 +348,7 @@ function getFormData(params, cont) {
 ////////////////////////////////////////////////////////////////////////////////
 /// RESPONSE output
 
-function sendResponse(params, rv) {
-    if (rv.contentType) {
-        params.contentType = rv.contentType;
-    }
-
+function sendResponse(params, status, body) {
     // assume it is only null for the non-GET/HEAD case
     if (params.contentType !== null) {
         // Accept-Charset is ignored. UTF-8 is the only supported output,
@@ -361,34 +357,31 @@ function sendResponse(params, rv) {
         // try to process it as ASCII if it comes down to that.
         params.headers['Content-Type'] = params.contentType + '; charset=utf-8';
     }
-    params.headers['Content-Length'] = Buffer.byteLength(rv.body, 'utf8');
+    params.headers['Content-Length'] = Buffer.byteLength(body, 'utf8');
     params.headers["Set-Cookie"] = cookiesToList(params.cookies);
-    params.response.writeHead(rv.status, params.headers);
+    params.response.writeHead(status, params.headers);
 
     if (params.request.method === 'HEAD') {
         params.response.end();
     } else {
-        params.response.end(rv.body);
+        params.response.end(body);
     }
 
     trace((new Date()).getTime() + '\t' + 'response.end');
 }
 
-function sendRawResponse(params, rv) {
-    if (rv.contentType) {
-        params.contentType = rv.contentType;
-    }
+function sendRawResponse(params, status, body) {
     if (params.contentType !== null) {
         params.headers['Content-Type'] = params.contentType;
     }
-    params.headers['Content-Length'] = rv.body.length;
+    params.headers['Content-Length'] = body.length;
     params.headers["Set-Cookie"] = cookiesToList(params.cookies);
-    params.response.writeHead(rv.status, params.headers);
+    params.response.writeHead(status, params.headers);
 
     if (params.request.method === 'HEAD') {
         params.response.end();
     } else {
-        params.response.end(rv.body);
+        params.response.end(body);
     }
 
     trace((new Date()).getTime() + '\t' + 'response.end');
@@ -418,7 +411,7 @@ function redirectTo(params, location) {
     }
 
     params.headers.Location = location;
-    sendResponse(params, { status: 303, body: body });
+    sendResponse(params, 303, body);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -426,17 +419,17 @@ function redirectTo(params, location) {
 
 function getPlain404(params) {
     var body = '404: Not Found';
-    sendResponse(params, { status: 404, body: body });
+    sendResponse(params, 404, body);
 }
 
 function getJson404(params) {
     var body = '{ "status": 404, "result": "Not Found" }';
-    sendResponse(params, { status: 404, body: body });
+    sendResponse(params, 404, body);
 }
 
 function getHtml404(params) {
     var body = '<h1>404: Not Found</h1><a href="/">Continue</a>';
-    sendResponse(params, { status: 404, body: body });
+    sendResponse(params, 404, body);
 }
 
 
@@ -445,20 +438,20 @@ function getPlain405(params) {
     var allow = Object.keys(params.place).join(', ');
     var body = "405: Method Not Allowed";
     params.headers.Allow = allow;
-    sendResponse(params, { status: 405, body: body });
+    sendResponse(params, 405, body);
 }
 
 function getJson405(params) {
     var body = '{ "status": 405: "result": "Method Not Allowed" }';
     params.headers.Allow = Object.keys(params.place).join(', ');
-    sendResponse(params, { status: 405, body: body });
+    sendResponse(params, 405, body);
 }
 
 function getHtml405(params) {
     var allow = Object.keys(params.place).join(', ');
     var body = "<h1>405: Method Not Allowed</h1>";
     params.headers.Allow = allow;
-    sendResponse(params, { status: 405, body: body });
+    sendResponse(params, 405, body);
 }
 
 
@@ -466,7 +459,7 @@ function getPlain406(params) {
     var body = '406: Not Acceptable\n\n';
     body += 'Requested: ' + params.request.headers.accept + '\n';
     body += 'Supported: ' + params.place[params.request.method].types + '\n';
-    sendResponse(params, { status: 406, body: body });
+    sendResponse(params, 406, body);
 }
 
 function getJson406(params) {
@@ -478,29 +471,29 @@ function getJson406(params) {
         supported: params.place[params.request.method].types
     });
 
-    sendResponse(params, { status: 406, body: body });
+    sendResponse(params, 406, body);
 }
 
 function getHtml406(params) {
     var body = '<h1>406: Not Acceptable</h1>';
     body += '<table><tbody><tr><th>Requested</th><td>' + params.request.headers.accept + '</td></tr>\n';
     body += '<tr><th>Supported</th><td>' + params.place[params.request.method].types + '</td></tr></tbody></table>\n';
-    sendResponse(params, { status: 406, body: body });
+    sendResponse(params, 406, body);
 }
 
 function getPlain500(params) {
     var body = '500: Internal Server Error';
-    sendResponse(params, { status: 500, body: body });
+    sendResponse(params, 500, body);
 }
 
 function getJson500(params) {
     var body = '{ "status": 500, "result": "Internal Server Error" }';
-    sendResponse(params, { status: 500, body: body });
+    sendResponse(params, 500, body);
 }
 
 function getHtml500(params) {
     var body = '<h1>500: Internal Server Error</h1>';
-    sendResponse(params, { status: 500, body: body });
+    sendResponse(params, 500, body);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
