@@ -699,7 +699,9 @@ function domainRunFunction(req, res) {
 var server;
 
 function domainErrorKill() {
-    process.exit(1);
+    if (process !== undefined) {
+        process.exit(1);
+    }
 }
 
 function domainErrorFunction(req, res) {
@@ -719,7 +721,11 @@ function domainErrorFunction(req, res) {
             killtimer.unref();
 
             // stop taking new requests.
-            server.close();
+            // is there a way to check if it's still running?
+            try {
+                server.close();
+            } catch (e) {
+            }
 
             // Let the master know we're dead.  This will trigger a
             // 'disconnect' in the cluster master, and then it will fork
