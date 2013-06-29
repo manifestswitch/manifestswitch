@@ -236,8 +236,6 @@ function getDataList(references, cont) {
     }
 
     var req = https.request(options, function(res) {
-        async_log('STATUS: ' + res.statusCode);
-        async_log('HEADERS: ' + JSON.stringify(res.headers));
         res.setEncoding('utf8');
 
         var ch = '';
@@ -298,8 +296,6 @@ function getDataItem(hex, cont) {
     }
 
     var req = https.request(options, function(res) {
-        async_log('STATUS: ' + res.statusCode);
-        async_log('HEADERS: ' + JSON.stringify(res.headers));
         res.setEncoding('utf8');
 
         var ch = '', shasum;
@@ -776,7 +772,6 @@ function getPostParent(hex) {
     async_log('h:'+hex);
     if (!(hex in parents)) {
         var data = getDataCached(hex);
-        async_log('d:'+data);
         if (data === null) {
             return null;
         }
