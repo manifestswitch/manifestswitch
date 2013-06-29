@@ -157,23 +157,13 @@ function authenticate_continue(params, username) {
     };
 }
 
+function postLoginGotData(params, uparams) {
+    authenticate(uparams.username, uparams.password,
+                 authenticate_continue(params, uparams.username));
+}
+
 function postLogin(params) {
-    var str = '';
-
-    function postLoginEnd() {
-        var uparams = url.parse('?' + str, true).query;
-
-        authenticate(uparams.username, uparams.password,
-                     authenticate_continue(params, uparams.username));
-    }
-
-    function postLoginData() {
-        str += params.request.read();
-    }
-
-    params.request.setEncoding('utf8');
-    params.request.on('end', postLoginEnd);
-    params.request.on('readable', postLoginData);
+    getFormData(params, postLoginGotData);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

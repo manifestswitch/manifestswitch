@@ -312,6 +312,26 @@ function deleteSession(params) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+/// REQUEST input
+
+function getFormData(params, cont) {
+    var str = '';
+
+    function postDataEnd() {
+        var uparams = url.parse('?' + str, true).query;
+        cont(params, uparams);
+    }
+
+    function postDataRead() {
+        str += params.request.read();
+    }
+
+    params.request.setEncoding('utf8');
+    params.request.on('end', postDataEnd);
+    params.request.on('readable', postDataRead);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// RESPONSE output
 
 function sendResponse(params, rv) {
