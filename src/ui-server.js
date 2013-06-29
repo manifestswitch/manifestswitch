@@ -291,7 +291,7 @@ function getDataItem(hex, cont) {
         headers: { Accept: 'text/plain' }
     };
 
-    if (hostname === '127.0.0.1') {
+    if (options.hostname === '127.0.0.1') {
         options.rejectUnauthorized = false;
     }
 
