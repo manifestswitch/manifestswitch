@@ -842,7 +842,7 @@ function getDataPostsHtml(params) {
                                        html += '<a class="hash" href="/posts/' + posts[k] + '">' + posts[k] + '</a>';
                                    }
                                }
-                               html += '<div><a href="/posts/form">Add</a></div>';
+                               html += '<div><a href="/posts/form?parent=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855">Add</a></div>';
                                html += '<div><a href="/">Home</a></div></body></html>';
 
                                sendResponse(params, { status: 200, body: html });
@@ -892,13 +892,19 @@ function getDataPostsHtml(params) {
                        });
 }
 
-function getPostFormHtml(params) {
-    var body = ('    <form action="/post" method="POST">\n' +
-                '      <input type="hidden" name="_method" value="PUT">\n' +
-                '      <input type="text" name="parent">\n' +
+function getPostsFormHtml(params) {
+    var query = url.parse(params.request.url, true).query;
+    if (!('parent' in query) || !looksLikeSha(query.parent)) {
+        // TODO: prettier error handling
+        sendResponse(params, { status: 400, body: 'Doesnt look like a SHA' });
+        return;
+    }
+    var body = ('<!DOCTYPE html><html><head></head><body>' +
+                '    <form action="/posts" method="POST">\n' +
+                '      <input type="hidden" name="parent" value="' + query.parent + '">\n' +
                 '      <textarea name="content"></textarea>\n' +
                 '      <input value="submit" type="submit">\n' +
-                '    </form>\n');
+                '    </form></body></html>');
 
     body += '<a href="/posts">Back</a>';
 
@@ -969,9 +975,9 @@ var places_exact = {
         ]
     },
 
-    '/post/form': {
+    '/posts/form': {
         'GET': [
-            { type: 'text/html', action: getPostFormHtml }
+            { type: 'text/html', action: getPostsFormHtml }
         ]
     },
 

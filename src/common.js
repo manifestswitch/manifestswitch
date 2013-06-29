@@ -158,6 +158,20 @@ function isHexCode(ch) {
     return ((ch >= 48) && (ch <= 57)) || ((ch >= 97) && (ch <= 104));
 }
 
+function looksLikeSha(str) {
+    var len = str.length, ch, i;
+    if (len !== 64) {
+        return false;
+    }
+    for (i = 0; i < len; ++i) {
+        ch = str.charCodeAt(i);
+        if (!((ch >= 48) && (ch <= 57)) && !((ch >= 97) && (ch <= 104))) {
+            return false;
+        }
+    }
+    return true;
+}
+
 function getReferencedHashes(content) {
     var hashes = [];
     var r = hash_re.exec(content);
