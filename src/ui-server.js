@@ -772,7 +772,7 @@ var parents = {
 
 var parentsRegex = /~parent\(([0-9a-f]{64})\)/;
 
-function getPostParent(hex) {
+function getPostParentCached(hex) {
     async_log('h:'+hex);
     if (!(hex in parents)) {
         var data = getDataCached(hex);
@@ -847,7 +847,7 @@ function getDataPostsHtml(params) {
                            function fetchedItem(hex, data) {
                                --waiting;
 
-                               var parent = getPostParent(hex);
+                               var parent = getPostParentCached(hex);
 
                                if (parent === hash) {
                                    child_posts.push(hex);
@@ -909,7 +909,7 @@ function getPostsFormHtml(params) {
 
 function gotPostItem(params) {
     return function (hash, data) {
-        var parent = getPostParent(data), parentLink;
+        var parent = getPostParentCached(hash), parentLink;
         if (parent === null) {
             parentLink = '';
         } else {
