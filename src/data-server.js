@@ -457,8 +457,8 @@ function postDataItem(params) {
 
             redirectTo(params, '/data/result?sha256=' + hex + '&prestate=none');
 
-        } else if ((uparams.content.length !== alreadyHas.content.length) ||
-                   (uparams.content.substring(0, 32) !== alreadyHas.content.substring(0, 32))) {
+        } else if ((uparams.content.length !== alreadyHas[0].content.length) ||
+                   (uparams.content.substring(0, 32) !== alreadyHas[0].content.substring(0, 32))) {
 
             // There's a slim possibility this was a hash collision,
             // which we make quick effort to check against. It is
