@@ -207,7 +207,7 @@ var currentlyFetchingLists = {
 };
 
 function getDataList(references, cont) {
-    var basePath = '/data?references=' + references.join(',');
+    var basePath = '/data?references=' + references.join('%2C');
     var hostname = '127.0.0.1';
     var source = hostname + basePath;
 
