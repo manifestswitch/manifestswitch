@@ -827,15 +827,15 @@ function getDataPostsHtml(params) {
                            var child_posts = [];
 
                            function sendFinal() {
-                               var html = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body>';
+                               var html = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body><ul>';
                                var posts;
                                if ((username in user_posts) && (hash in user_posts[username])) {
                                    posts = Object.keys(user_posts[username][hash]);
                                    for (var k = 0, klen = posts.length; k < klen; ++k) {
-                                       html += '<a class="hash" href="/posts/' + posts[k] + '">' + posts[k] + '</a>';
+                                       html += '<li><a class="hash" href="/posts/' + posts[k] + '">' + posts[k] + '</a></li>';
                                    }
                                }
-                               html += '<div><a href="/posts/form?parent=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855">Add</a></div>';
+                               html += '</ul><div><a href="/posts/form?parent=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855">Add</a></div>';
                                html += '<div><a href="/">Home</a></div></body></html>';
 
                                sendResponse(params, 200, html);
