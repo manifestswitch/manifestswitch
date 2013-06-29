@@ -371,7 +371,7 @@ function sendResponse(params, status, body) {
         params.response.end(body);
     }
 
-    trace((new Date()).getTime() + '\t' + 'response.end');
+    trace((new Date()).getTime() + '\t' + status + ' ' + params.headers['Content-Length']);
 }
 
 function sendRawResponse(params, status, body) {
@@ -388,7 +388,7 @@ function sendRawResponse(params, status, body) {
         params.response.end(body);
     }
 
-    trace((new Date()).getTime() + '\t' + 'response.end');
+    trace((new Date()).getTime() + '\t' + status + ' ' + body.length);
 }
 
 function redirectTo(params, location) {
@@ -634,7 +634,6 @@ function domainRunFunction(req, res) {
         };
 
         try {
-            async_log(req.method + ' ' + req.url);
             params.urlparts = url.parse(req.url);
 
             params.cookies = parseCookies(req.headers.cookie);
@@ -752,7 +751,7 @@ function clusterDisconnect(worker) {
 /// CORE HTTP server
 
 function doReq(req, res) {
-    trace((new Date()).getTime() + '\t' + 'start req');
+    trace((new Date()).getTime() + '\t' + req.method + ' ' + req.url);
 
     var d = domain.create();
 
