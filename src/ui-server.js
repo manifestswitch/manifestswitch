@@ -907,6 +907,11 @@ function getPostsFormHtml(params) {
 
 function gotPostItem(params) {
     return function (hash, data) {
+        if (data === null) {
+            // TODO: add some knowledge of 410 hashes
+            sendResponse(params, 404, 'No such hash <a href="/posts">Back</a>');
+            return;
+        }
         var parent = getPostParentCached(hash), parentLink;
         if (parent === null) {
             parentLink = '';
