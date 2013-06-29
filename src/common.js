@@ -707,7 +707,6 @@ function domainErrorKill() {
 function domainErrorFunction(req, res) {
     return function(er) {
         var killtimer, params;
-        async_log('error', er);
 
         // Note: we're in dangerous territory!
         // By definition, something unexpected occurred,
@@ -715,6 +714,9 @@ function domainErrorFunction(req, res) {
         // Anything can happen now!  Be very careful!
 
         try {
+            console.error(er);
+            async_log('FATAL ', er);
+
             // make sure we close down within 30 seconds
             killtimer = setTimeout(domainErrorKill, 30000);
             // But don't keep the process open just for that!
@@ -743,7 +745,7 @@ function domainErrorFunction(req, res) {
 
         } catch (er2) {
             // oh well, not much we can do at this point.
-            async_log('Error sending 500!', er2);
+            console.error(er2);
         }
     };
 }
