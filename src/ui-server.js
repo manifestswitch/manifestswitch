@@ -832,7 +832,7 @@ function getDataPostsHtml(params) {
                                if ((username in user_posts) && (hash in user_posts[username])) {
                                    posts = Object.keys(user_posts[username][hash]);
                                    for (var k = 0, klen = posts.length; k < klen; ++k) {
-                                       html += '<li><a class="hash" href="/posts/' + posts[k] + '">' + posts[k] + '</a></li>';
+                                       html += '<li><a class="hash" href="/post/' + posts[k] + '">' + posts[k] + '</a></li>';
                                    }
                                }
                                html += '</ul><div><a href="/posts/form?parent=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855">Add</a></div>';
