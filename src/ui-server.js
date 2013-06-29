@@ -904,11 +904,28 @@ function getPostsFormHtml(params) {
     sendResponse(params, 200, body);
 }
 
-function getPostItemHtml(params) {
-    var body = ('    <h1>Hello</h1>');
-    body += '<a href="/posts">Back</a>';
+function gotPostItem(params) {
+    return function (hash, data) {
+        var parent = getPostParent(data), parentLink;
+        if (parent === null) {
+            parentLink = '';
+        } else {
+            parentLink = '<div><a href="/post/' + parent + '">Parent</a></div>';
+        }
+        var body = ('<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body><h1 class="hash">' +
+                    hash +
+                    '</h1><pre>' +
+                    data +
+                    '</pre>' + parentLink + '<div><a href="/posts?parent=' + hash + '">Comments</a></div><div><a href="/posts">Back</a></div></body></html>');
 
-    sendResponse(params, 200, body);
+        sendResponse(params, 200, body);
+    };
+}
+
+function getPostItemHtml(params) {
+    var hash = params.urlparts.pathname.substring('/post/'.length);
+
+    getDataItem(hash, gotPostItem(params));
 }
 
 function getStyleCss(params) {
