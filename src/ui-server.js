@@ -758,7 +758,6 @@ function getUpvotedCached(hex) {
         if (data === null) {
             return null;
         }
-        async_log(JSON.stringify(data));
         var match = data.match(upvoteRegex);
         upvotes[hex] = (match === null) ? null : match[1];
     }
@@ -773,10 +772,8 @@ var parents = {
 var parentsRegex = /~parent\(([0-9a-f]{64})\)/;
 
 function getPostParentCached(hex, data) {
-    async_log('h:'+hex);
     if (!(hex in parents)) {
         var match = data.match(parentsRegex);
-        async_log('m:'+match);
         parents[hex] = (match === null) ? null : match[1];
     }
     return parents[hex];
