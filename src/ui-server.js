@@ -752,7 +752,7 @@ var upvotes = {
 
 var upvoteRegex = /~upvote\(([0-9a-f]{64})\)/;
 
-function getUpvoted(hex) {
+function getUpvotedCached(hex) {
     if (!(hex in upvotes)) {
         var data = getDataCached(hex);
         if (data === null) {
@@ -867,7 +867,7 @@ function getDataPostsHtml(params) {
 
                            for (var i = 0, len = lists.length; i < len; ++i) {
                                for (var j = 0, jlen = lists[i].length; j < jlen; ++j) {
-                                   var upvoted = getUpvoted(lists[i][j]);
+                                   var upvoted = getUpvotedCached(lists[i][j]);
                                    if (upvoted !== null) {
                                        // TODO: actually verify the signature
                                        if (true || verifySignature(upvoted)) {
