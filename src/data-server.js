@@ -477,7 +477,9 @@ function postDataItem(params) {
         shasum = crypto.createHash('sha256');
         shasum.setEncoding('hex');
         shasum.on('readable', shasumRead);
-        shasum.write(uparams.content);
+        if (uparams.content !== '') {
+            shasum.write(uparams.content);
+        }
         shasum.end();
     }
 
