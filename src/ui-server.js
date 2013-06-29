@@ -159,7 +159,7 @@ var by_username = {
 // 'user': ['d283a3...' /*mine*/, 'cd3987af...', ... /*theirs*/ ]
 var follows_list = {
     // [sha256("user"), sha256("user2")]
-    'user': ['04f8996da763b7a969b1028ee3007569eaf3a635486ddab211d512c85b9df8fb', '6025d18fe48abd45168528f18a82e265dd98d421a7084aa09f61b341703901a3']
+    'user': ['04f8996da763b7a969b1028ee3007569eaf3a635486ddab211d512c85b9df8fb', '6025d18fe48abd45168528f18a82e265dd98d421a7084aa09f61b341703901a3', 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855']
 }
 
 var datadb = [
