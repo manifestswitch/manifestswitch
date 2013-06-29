@@ -113,6 +113,10 @@ function log_failure(err) {
     }
 }
 
+function logError(e) {
+    async_log('ERROR', e);
+}
+
 var async_will_log = false;
 var async_log_jobs = [];
 var async_id = '';

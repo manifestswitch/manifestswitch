@@ -263,10 +263,7 @@ function getDataList(references, cont) {
         });
     });
 
-    req.on('error', function(e) {
-        async_log('problem with request: ' + e.message);
-    });
-
+    req.on('error', logError);
     req.end();
 }
 
