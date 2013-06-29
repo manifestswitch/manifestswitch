@@ -65,6 +65,7 @@ var data_server_css = '.hash { font-family: monospace; }';
 var data_server_css_gzip = new Buffer('H4sICIuczFECA2RhdGEtc2VydmVyLmNzcwDTy0gszlCoVkjLzyvRTUvMzcyptFLIzc/LLy5ITE61VqjlAgB3ZlLSIgAAAA==', 'base64');
 
 var datadb = [
+    { hash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', content: '', gone: false },
     { hash: 'caf3af6d893b5cb8eae9a90a3054f370a92130863450e3299d742c7a65329d94', content: 'boo\n', gone: false },
     { hash: '7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730', content: 'bar\n', gone: true },
     { hash: 'bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c', content: 'baz\n', gone: false },
