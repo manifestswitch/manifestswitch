@@ -331,7 +331,10 @@ function getDataItem(hex, cont) {
                 shasum = crypto.createHash('sha256');
                 shasum.setEncoding('hex');
                 shasum.on('readable', shasumRead);
-                shasum.write(ch);
+                // seems like a bug, can't hash the empty string
+                if (ch !== '') {
+                    shasum.write(ch);
+                }
                 shasum.end();
             } else {
                 ch = null
