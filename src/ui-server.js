@@ -616,31 +616,6 @@ function postLogout(params) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// FIXME:
-//
-// The recipient of the entity MUST NOT ignore any Content-*
-// (e.g. Content-Range) headers that it does not understand or
-// implement and MUST return a 501 (Not Implemented) response in such
-// cases.
-
-function putDataItem(params) {
-    var str = '';
-
-    function putDataItemEnd() {
-        var uparams = url.parse('?' + str, true).query;
-    }
-
-    function putDataItemData() {
-        str += params.request.read();
-    }
-
-    params.request.setEncoding('utf8');
-    params.request.on('end', putDataItemEnd);
-    params.request.on('readable', putDataItemData);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 function getLogoutResultPlain(params) {
     var body, status;
     if (sessionGet(params, 'username') === null) {
@@ -972,11 +947,6 @@ var places_exact = {
         'GET': [
             { type: 'text/html', action: getHomePageHtml }
         ]
-    },
-
-    '/data': {
-        'PUT': putDataItem,
-        'POST': putDataItem
     },
 
     '/login': {
