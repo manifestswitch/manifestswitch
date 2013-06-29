@@ -801,11 +801,11 @@ function getDataPostsHtml(params) {
     var query = url.parse(params.request.url, true).query;
     var hash;
 
-    if (!('hash' in query)) {
+    if (!('parent' in query)) {
         // just a helpful starting point
         hash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
     } else {
-        hash = query.hash;
+        hash = query.parent;
     }
 
     // a) If we do not yet have an up-to-date list of our network's
