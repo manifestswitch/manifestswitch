@@ -922,7 +922,7 @@ function gotPostItem(params) {
                     hash +
                     '</h1><pre>' +
                     data +
-                    '</pre>' + parentLink + '<div><a href="/posts?parent=' + hash + '">Comments</a></div><div><a href="/posts">Back</a></div></body></html>');
+                    '</pre>' + parentLink + '<div><a href="/posts?parent=' + hash + '">Comments</a><div><a href="/posts/form?parent=' + hash + '">Reply</a></div></div><div><a href="/posts">Back</a></div></body></html>');
 
         sendResponse(params, 200, body);
     };
