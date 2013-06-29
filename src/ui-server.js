@@ -900,9 +900,7 @@ function getPostsFormHtml(params) {
                 '      <input type="hidden" name="parent" value="' + query.parent + '">\n' +
                 '      <textarea name="content"></textarea>\n' +
                 '      <input value="submit" type="submit">\n' +
-                '    </form></body></html>');
-
-    body += '<a href="/posts">Back</a>';
+                '    </form><a href="/posts">Back</a></body></html>');
 
     sendResponse(params, 200, body);
 }
