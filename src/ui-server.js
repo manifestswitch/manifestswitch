@@ -772,13 +772,9 @@ var parents = {
 
 var parentsRegex = /~parent\(([0-9a-f]{64})\)/;
 
-function getPostParentCached(hex) {
+function getPostParentCached(hex, data) {
     async_log('h:'+hex);
     if (!(hex in parents)) {
-        var data = getDataCached(hex);
-        if (data === null) {
-            return null;
-        }
         var match = data.match(parentsRegex);
         async_log('m:'+match);
         parents[hex] = (match === null) ? null : match[1];
@@ -847,7 +843,7 @@ function getDataPostsHtml(params) {
                            function fetchedItem(hex, data) {
                                --waiting;
 
-                               var parent = getPostParentCached(hex);
+                               var parent = getPostParentCached(hex, data);
 
                                if (parent === hash) {
                                    child_posts.push(hex);
@@ -912,7 +908,7 @@ function gotPostItem(params) {
             sendResponse(params, 404, 'No such hash <a href="/posts">Back</a>');
             return;
         }
-        var parent = getPostParentCached(hash), parentLink;
+        var parent = getPostParentCached(hash, data), parentLink;
         if (parent === null) {
             parentLink = '';
         } else {
