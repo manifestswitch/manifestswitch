@@ -935,6 +935,105 @@ function getStyleCss(params) {
     sendResponse(params, 200, ui_server_css);
 }
 
+function followUntilSuccess(params, protocol, options, payload, cont, seen, scount) {
+    function gotResponse(res) {
+        if (res.statusCode >= 200 && res.statusCode <= 299) {
+            cont(params, true);
+            return;
+        }
+        if (res.statusCode >= 301 && res.statusCode <= 399) {
+            if (!('location' in res.headers) || (res.headers.location in seen)) {
+                async_log('bad location');
+                async_log(JSON.stringify(res.headers));
+                cont(params, false);
+                return;
+            }
+            if (scount > 8) {
+                async_log('too much redirect');
+                cont(params, false);
+                return;
+            }
+            seen[res.headers.location] = true;
+            // if Location is already in the cycles list, return false (cycle)
+            // add the Location to the cycles list
+            // perform HEAD on the Location
+            var u = url.parse(res.headers.location);
+            var newoptions = {
+                hostname: u.hostname === null ? options.hostname : u.hostname,
+                port: u.port === null ? options.port : u.port,
+                path: u.path,
+                method: 'HEAD'
+            };
+            followUntilSuccess(params, u.protocol === null ? protocol : u.protocol, newoptions, null, cont, seen, scount + 1);
+            return;
+        }
+        async_log('bad status');
+        async_log(res.statusCode);
+
+        cont(params, false);
+    }
+
+    var req;
+    if (protocol === 'https:') {
+        if (options.hostname === '127.0.0.1') {
+            options.rejectUnauthorized = false;
+        }
+        req = https.request(options, gotResponse);
+    } else if (protocol === 'http:') {
+        req = http.request(options, gotResponse);
+    } else {
+        async_log('bad protocol');
+        async_log(protocol);
+        cont(params, false);
+        return;
+    }
+
+    req.on('error', logError);
+    req.end(payload);
+}
+
+function getPostsFormResultHtml(params) {
+    var body;
+    var query = url.parse(params.request.url, true).query;
+    if (('result' in query) && (query.result === 'ok')) {
+        sendResponse(params, 200, 'data was posted <a href="/posts">Back</a>');
+    } else {
+        sendResponse(params, 500, 'could not post data');
+    }
+}
+
+function postFinished(params, result) {
+    if (result) {
+        redirectTo(params, '/posts/form/result?result=ok');
+    } else {
+        redirectTo(params, '/posts/form/result?result=fail');
+    }
+}
+
+function gotPostPost(params, query) {
+    if (!('parent' in query) || !looksLikeSha(query.parent)) {
+        // TODO: prettier error handling
+        redirectTo(params, '/error/400');
+        return;
+    }
+
+    var options = {
+        hostname: '127.0.0.1',
+        port: 7443,
+        path: '/data',
+        method: 'POST',
+        headers: { Accept: 'text/plain' }
+    };
+
+    // FIXME: needs to be form encoded as 'content=$data'
+    var payload = 'content=' + encodeURIComponent('~parent(' + query.parent + ')\n~date(' + (new Date()).getTime() + ')\n' + query.content);
+    followUntilSuccess(params, 'https:', options, payload, postFinished, {}, 0);
+}
+
+function postPost(params) {
+    getFormData(params, gotPostPost);
+}
+
 function getFaviconIco(params) {
     params.contentType = 'image/x-icon';
     // 30 days
@@ -982,12 +1081,19 @@ var places_exact = {
     '/posts': {
         'GET': [
             { type: 'text/html', action: getDataPostsHtml }
-        ]
+        ],
+        'POST': postPost
     },
 
     '/posts/form': {
         'GET': [
             { type: 'text/html', action: getPostsFormHtml }
+        ]
+    },
+
+    '/posts/form/result': {
+        'GET': [
+            { type: 'text/html', action: getPostsFormResultHtml }
         ]
     },
 
