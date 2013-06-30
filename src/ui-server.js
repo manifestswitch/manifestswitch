@@ -1107,39 +1107,101 @@ function followUntilSuccess(params, protocol, options, payload, cont, scount) {
 function getPostsFormResultHtml(params) {
     var body;
     var query = url.parse(params.request.url, true).query;
-    if (('result' in query) && (query.result === 'ok')) {
-        sendResponse(params, 200, 'data was posted <a href="/posts">Back</a>');
-    } else {
-        sendResponse(params, 500, 'could not post data');
+    if (!('sha256' in query) || !looksLikeSha(query.sha256)) {
+        sendResponse(params, 400, 'invalid sha <a href="/posts">Back</a>');
+        return;
     }
+    if (!query.sha256) {
+        sendResponse(params, 500, 'data was not posted <a href="/posts">Back</a>');
+        return;
+    }
+    sendResponse(params, 200,
+                 ('data was posted <div><a class="hash" href="/post/' + query.sha256 + '">' +
+                  query.sha256 + '</a></div><div><a href="/posts">Back</a></div>'));
 }
 
-function postFinished(params, result) {
-    if (result) {
-        redirectTo(params, '/posts/form/result?result=ok');
-    } else {
-        redirectTo(params, '/posts/form/result?result=fail');
+function postFinished(hex) {
+    return function (params, result) {
+        if (!result) {
+            // if the post didn't make it to the backing store, remove
+            // it from the cache to avoid confusion.
+            delete hashed_by[hex];
+        }
+        redirectTo(params, '/posts/form/result?sha256=' + hex);
+    };
+}
+
+function getUserKey(params) {
+    return new Buffer('tTDm6WQHj8dqVH/c73nu+SmDEisT/UqIE5Op2C9IO10=', 'base64');
+}
+
+function generateIv(cont) {
+    function gotBytes(ex, buf) {
+        if (ex) {
+            async_log('error generating IV', ex);
+            cont(null);
+            return;
+        }
+        cont(buf);
     }
+    crypto.randomBytes(16, gotBytes);
 }
 
 function gotPostPost(params, query) {
+
+    var cipher, shasum, enc = '~cc(04f8996da763b7a969b1028ee3007569eaf3a635486ddab211d512c85b9df8fb)\n';
+
+    function shasumRead() {
+        var digest = shasum.read(64);
+
+        if (digest === null) {
+            return;
+        }
+
+        // TODO: change to PUT when possible
+        var options = {
+            hostname: '127.0.0.1',
+            port: 7443,
+            path: '/data',
+            method: 'POST',
+            headers: { Accept: 'text/plain' }
+        };
+
+        var payload = 'content=' + encodeURIComponent(enc);
+        followUntilSuccess(params, 'https:', options, payload, postFinished(digest), 0);
+    }
+
+    function cipherEnd() {
+        enc += ')\n';
+        shasum = crypto.createHash('sha256');
+        shasum.setEncoding('hex');
+        shasum.on('readable', shasumRead);
+        shasum.write(enc);
+        shasum.end();
+    }
+
+    function cipherRead() {
+        enc += cipher.read();
+    }
+
+    function gotIv(iv) {
+        var thepost = '~post(' + query.parent + ')\n~date(' + (new Date()).getTime() + ')\n' + query.content;
+        var algo = 'aes-256-cbc';
+        enc += '~iv(' + iv.toString('base64') + ')\n~cipher(' + algo + ')\n~data(';
+        cipher = crypto.createCipheriv(algo, getUserKey(params), iv);
+        cipher.setEncoding('base64');
+        cipher.on('readable', cipherRead);
+        cipher.on('end', cipherEnd);
+        cipher.write(thepost);
+        cipher.end();
+    }
+
     if (!('parent' in query) || !looksLikeSha(query.parent)) {
         // TODO: prettier error handling
         redirectTo(params, '/error/400');
         return;
     }
-
-    var options = {
-        hostname: '127.0.0.1',
-        port: 7443,
-        path: '/data',
-        method: 'POST',
-        headers: { Accept: 'text/plain' }
-    };
-
-    // FIXME: needs to be form encoded as 'content=$data'
-    var payload = 'content=' + encodeURIComponent('~parent(' + query.parent + ')\n~date(' + (new Date()).getTime() + ')\n' + query.content);
-    followUntilSuccess(params, 'https:', options, payload, postFinished, 0);
+    generateIv(gotIv);
 }
 
 // TODO: limit upload size to something smallish like 128K. This is
