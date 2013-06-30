@@ -73,11 +73,3 @@ and the third was "operation's".
 From this I settled on the projct name "Manifest Switch". While
 "Operation Manifest Switch" has some ring to it, it's slightly
 misleading, so I've left that for a later date.
-
-
-Plug
-----
-
-If your organisation would like to donate a subsistence wage for me to
-research, develop and manage this project full time, please get in
-touch :)
