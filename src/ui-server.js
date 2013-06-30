@@ -1146,6 +1146,10 @@ function gotPostPost(params, query) {
 // useful at this level to stop uploads hogging connections and to
 // reduce the amount of data being SHA'd.
 function postPost(params) {
+    var username = sessionGet(params, 'username');
+    if (username === null) {
+        sendResponse(params, 403, 'You must be logged in to make a post <a href="/posts">Posts</a>');
+    }
     getFormData(params, gotPostPost);
 }
 
