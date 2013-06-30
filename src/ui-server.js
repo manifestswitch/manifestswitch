@@ -313,6 +313,8 @@ function getDataItem(hex, cont) {
 
         var ch = '', shasum;
 
+        // TODO: unlikely, but if we don't get 64 bytes of shasum it
+        // will succeed anyway, make it fail in that case.
         function shasumFinish() {
             for (var i = 0, len = currentlyFetchingItems[hex].length; i < len; ++i) {
                 currentlyFetchingItems[hex][i](hex, ch);
