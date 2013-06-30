@@ -961,16 +961,34 @@ function getDataPostsHtml(params) {
                                }
                            }
 
+                           function verifyAndGet(container, upvoted) {
+                               // TODO: actually verify the signature
+                               if (true || verifySignature(container)) {
+                                   getDataItemAndIndex(upvoted, fetchedItem);
+                               } else {
+                                   --waiting;
+                               }
+                           }
+
+                           function gotUpvotedEncryptedCached(container) {
+                               return function (upvoted) {
+                                   if (upvoted !== null) {
+                                       verifyAndGet(container, upvoted);
+                                   } else {
+                                       --waiting;
+                                   }
+                               };
+                           }
+
                            for (var i = 0, len = lists.length; i < len; ++i) {
                                for (var j = 0, jlen = lists[i].length; j < jlen; ++j) {
                                    var upvoted = getUpvotedCached(lists[i][j]);
-                                   if (upvoted !== null) {
-                                       // TODO: actually verify the signature
-                                       if (true || verifySignature(upvoted)) {
-                                           ++waiting;
-                                           getDataItemAndIndex(upvoted, fetchedItem);
-                                       }
+                                   if (upvoted === null) {
+                                       getUpvotedEncryptedCached(params, lists[i][j], gotUpvotedEncryptedCached(lists[i][j]));
+                                   } else {
+                                       verifyAndGet(lists[i][j], upvoted);
                                    }
+                                   ++waiting;
                                }
                            }
 
