@@ -789,6 +789,9 @@ var parentsRegex = /~parent\(([0-9a-f]{64})\)/;
 
 function getPostParentCached(hex, data) {
     if (!(hex in parents)) {
+        if (data === null) {
+            return null;
+        }
         var match = data.match(parentsRegex);
         parents[hex] = (match === null) ? null : match[1];
     }
