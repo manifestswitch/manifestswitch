@@ -207,6 +207,19 @@ var currentlyFetchingLists = {
 };
 
 function getDataList(references, cont) {
+    // FIXME: at some point this request URI will become too large, as
+    // the number of people we are following grows above 50 or
+    // 60. This is an annoying problem to have because it is somewhat
+    // arbitrary.
+    // Possibly have /data?batch=$hash where $hash contains the
+    // requested hashes? The batch would be re-usable between
+    // requests, so this wouldn't massively spam the data-servers, but
+    // it would be less transient what kinds of hashes were being
+    // requested.
+    // An obvious alternative would be to just perform one API hit per
+    // reference, but this would mean hitting hundreds of URLs just to
+    // check if one had changed.
+    // Go with the batch solution for now.
     var basePath = '/data?references=' + references.join('%2C');
     var hostname = '127.0.0.1';
     var source = hostname + basePath;
