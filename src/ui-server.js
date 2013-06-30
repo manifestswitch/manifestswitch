@@ -780,6 +780,86 @@ function getUpvotedCached(hex) {
     return upvotes[hex];
 }
 
+var ivRegex = /~iv\(([0-9a-zA-Z\/+]{22}==)\)/;
+var cipherRegex = /~cipher\(([^\)]+)\)/;
+// XXX: doesn't check that the output length is a multiple of 4 bytes
+var dataRegex = /~data\(([0-9a-zA-Z\/+]+={0,2})\)/;
+
+function getDecrypt(params, data, cont) {
+    var dec = '';
+
+    function decipherEnd() {
+        cont(dec);
+    }
+
+    function decipherRead() {
+        dec += decipher.read();
+    }
+
+    var ivm = data.match(ivRegex);
+    if (ivm === null) {
+        cont(null);
+        return;
+    }
+    var cipherm = data.match(cipherRegex);
+    if (cipherm === null) {
+        cont(null);
+        return;
+    }
+    var datam = data.match(dataRegex);
+    if (datam === null) {
+        cont(null);
+        return;
+    }
+    // todo: support other ciphers
+    if (cipherm[1] !== 'aes-256-cbc') {
+        cont(null);
+        return;
+    }
+    var iv = new Buffer(ivm[1], 'base64');
+    var data = new Buffer(datam[1], 'base64');
+    var decipher = crypto.createDecipheriv(cipherm[1], getUserKey(params), iv);
+    decipher.setEncoding('utf8');
+    decipher.on('readable', decipherRead);
+    decipher.on('end', decipherEnd);
+    decipher.write(data);
+    decipher.end();
+}
+
+// If there is an upvote, returns the thing being upvoted
+var upvotesEncrypted = {
+    // 'username': { 'hex': hex }
+};
+
+// Similar to the above function, but tries to decrypt using the
+// user's keys, and thus should be considered valid only for this user
+function getUpvotedEncryptedCached(params, hex, cont) {
+    function gotDecrypt(data) {
+        if (data === null) {
+            cont(null);
+            return;
+        }
+        var match = data.match(upvoteRegex);
+        if (!(username in upvotesEncrypted)) {
+            upvotesEncrypted[username] = {};
+        }
+        upvotesEncrypted[username][hex] = (match === null) ? null : match[1];
+        cont(upvotesEncrypted[username][hex]);
+    }
+
+    var username = sessionGet(params, 'username');
+    if (!(username in upvotesEncrypted) || !(hex in upvotesEncrypted[username])) {
+        var data = getDataCached(hex);
+        if (data === null) {
+            cont(null);
+            return;
+        }
+        getDecrypt(params, data, gotDecrypt);
+        return;
+    }
+    cont(upvotesEncrypted[username][hex]);
+}
+
 // If there is a parent, returns it
 var parents = {
     // 'hex': hex
