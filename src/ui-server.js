@@ -1025,6 +1025,9 @@ function gotPostPost(params, query) {
     followUntilSuccess(params, 'https:', options, payload, postFinished, 0);
 }
 
+// TODO: limit upload size to something smallish like 128K. This is
+// useful at this level to stop uploads hogging connections and to
+// reduce the amount of data being SHA'd.
 function postPost(params) {
     getFormData(params, gotPostPost);
 }

@@ -415,6 +415,9 @@ function getDataFormHtml(params) {
 
 // Note, should result in a valid 201 on success.
 // Or could do 202 to allow batching?
+
+// FIXME: implement upload quotas. Each IP address can only upload a
+// certain amount of data per day, and a max size for each upload.
 function postDataItem(params) {
     var shasum, uparams, str = '';
 
