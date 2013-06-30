@@ -934,14 +934,14 @@ function getStyleCss(params) {
     sendResponse(params, 200, ui_server_css);
 }
 
-function followUntilSuccess(params, protocol, options, payload, cont, seen, scount) {
+function followUntilSuccess(params, protocol, options, payload, cont, scount) {
     function gotResponse(res) {
         if (res.statusCode >= 200 && res.statusCode <= 299) {
             cont(params, true);
             return;
         }
         if (res.statusCode >= 301 && res.statusCode <= 399) {
-            if (!('location' in res.headers) || (res.headers.location in seen)) {
+            if (!('location' in res.headers)) {
                 async_log('bad location');
                 async_log(JSON.stringify(res.headers));
                 cont(params, false);
@@ -952,10 +952,6 @@ function followUntilSuccess(params, protocol, options, payload, cont, seen, scou
                 cont(params, false);
                 return;
             }
-            seen[res.headers.location] = true;
-            // if Location is already in the cycles list, return false (cycle)
-            // add the Location to the cycles list
-            // perform HEAD on the Location
             var u = url.parse(res.headers.location);
             var newoptions = {
                 hostname: u.hostname === null ? options.hostname : u.hostname,
@@ -963,7 +959,7 @@ function followUntilSuccess(params, protocol, options, payload, cont, seen, scou
                 path: u.path,
                 method: 'HEAD'
             };
-            followUntilSuccess(params, u.protocol === null ? protocol : u.protocol, newoptions, null, cont, seen, scount + 1);
+            followUntilSuccess(params, u.protocol === null ? protocol : u.protocol, newoptions, null, cont, scount + 1);
             return;
         }
         async_log('bad status');
@@ -1026,7 +1022,7 @@ function gotPostPost(params, query) {
 
     // FIXME: needs to be form encoded as 'content=$data'
     var payload = 'content=' + encodeURIComponent('~parent(' + query.parent + ')\n~date(' + (new Date()).getTime() + ')\n' + query.content);
-    followUntilSuccess(params, 'https:', options, payload, postFinished, {}, 0);
+    followUntilSuccess(params, 'https:', options, payload, postFinished, 0);
 }
 
 function postPost(params) {
