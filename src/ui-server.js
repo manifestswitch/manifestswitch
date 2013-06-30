@@ -328,6 +328,7 @@ function getDataItem(hex, cont) {
             }
 
             if (digest !== hex) {
+                async_log(digest + ' doesnt match ' + hex);
                 // this would be a good point to fail over to another data
                 // service
                 ch = null;
