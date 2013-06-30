@@ -70,7 +70,7 @@ var datadb = [
     { hash: '7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730', content: 'bar\n', gone: true },
     { hash: 'bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c', content: 'baz\n', gone: false },
     { hash: 'caf3af6d893b5cb8eae9a90a3054f370a92130863450e3299d742c7a65329d94', content: 'collides boo\n', gone: false },
-    { hash: '56033332ea10fc431debaebac37398ebd28d149337de245b78feb31a606ca2e8', content: 'allo allo\n\n~parent(e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855)\n', gone: false }
+    { hash: '5488b4b042ce5dd01bbb7bc3737f55559a6a6ff13379c3f721613833d658601e', content: 'allo allo\n\n~post(e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855)\n', gone: false }
 ];
 
 // index on hash -> [datadb[i], ...]
@@ -79,19 +79,19 @@ var hashed_by = {
     'caf3af6d893b5cb8eae9a90a3054f370a92130863450e3299d742c7a65329d94': [datadb[1], datadb[4]],
     '7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730': [datadb[2]],
     'bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c': [datadb[3]],
-    '56033332ea10fc431debaebac37398ebd28d149337de245b78feb31a606ca2e8': [datadb[5]]
+    '5488b4b042ce5dd01bbb7bc3737f55559a6a6ff13379c3f721613833d658601e': [datadb[5]]
 };
 
 var refersdb = [
 //    { referrer: 'caf3af6d893b5cb8eae9a90a3054f370a92130863450e3299d742c7a65329d94',
 //      referree: 'bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c' },
-    { referrer: '56033332ea10fc431debaebac37398ebd28d149337de245b78feb31a606ca2e8',
+    { referrer: '5488b4b042ce5dd01bbb7bc3737f55559a6a6ff13379c3f721613833d658601e',
       referree: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' },
 ];
 
 // an index on referree -> [referrer, ...]
 var referred_by = {
-    'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855': ['56033332ea10fc431debaebac37398ebd28d149337de245b78feb31a606ca2e8']
+    'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855': ['5488b4b042ce5dd01bbb7bc3737f55559a6a6ff13379c3f721613833d658601e']
 };
 
 var needs_referring = [];

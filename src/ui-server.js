@@ -726,7 +726,7 @@ list rated: same as above, but sorted by friend's upvotes within a time period
 // some data
 //
 // ~date($somedate)
-// ~parent($somehash)
+// ~post($somehash)
 //
 // BEGIN GPG SIGNATURE
 // ...
@@ -865,7 +865,7 @@ var parents = {
     // 'hex': hex
 };
 
-var parentsRegex = /~parent\(([0-9a-f]{64})\)/;
+var parentsRegex = /~post\(([0-9a-f]{64})\)/;
 
 function getPostParentCached(hex, data) {
     if (!(hex in parents)) {
@@ -910,7 +910,7 @@ function getDataPostsHtml(params) {
     // a.2) For each of those content, get a filter list of their upvotes, downvotes, and novotes
     // a.3) Where multiple votes are cast on the same content by a user, take only the most recent one.
     // b) For each of the upvotes above, download the content it references.
-    // c) Filter the list to only those containing "~parent($hash)"
+    // c) Filter the list to only those containing "~post($hash)"
 
     var username = sessionGet(params, 'username');
     refreshPeerContent(username,
