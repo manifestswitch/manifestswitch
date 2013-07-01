@@ -772,14 +772,18 @@ var upvotes = {
 
 var upvoteRegex = /~upvote\(([0-9a-f]{64})\)/;
 
+function getUpvoteFromData(data) {
+    var match = data.match(upvoteRegex);
+    return (match === null) ? null : match[1];
+}
+
 function getUpvotedCached(hex) {
     if (!(hex in upvotes)) {
         var data = getDataCached(hex);
         if (data === null) {
             return null;
         }
-        var match = data.match(upvoteRegex);
-        upvotes[hex] = (match === null) ? null : match[1];
+        upvotes[hex] = getUpvoteFromData(data)
     }
     return upvotes[hex];
 }
@@ -843,11 +847,10 @@ function getUpvotedEncryptedCached(params, hex, cont) {
             cont(hex, null);
             return;
         }
-        var match = data.match(upvoteRegex);
         if (!(username in upvotesEncrypted)) {
             upvotesEncrypted[username] = {};
         }
-        upvotesEncrypted[username][hex] = (match === null) ? null : match[1];
+        upvotesEncrypted[username][hex] = getUpvoteFromData(data);
         cont(hex, upvotesEncrypted[username][hex]);
     }
 
