@@ -974,21 +974,20 @@ function getDataPostsHtml(params) {
                                }
                            }
 
-                           function gotUpvotedEncryptedCached(container) {
-                               return function (upvoted) {
-                                   if (upvoted !== null) {
-                                       verifyAndGet(container, upvoted);
-                                   } else {
-                                       --waiting;
-                                   }
-                               };
+                           function gotUpvotedEncryptedCached(upvoted) {
+                               if (upvoted !== null) {
+                                   // doesn't need a signature because it was encrypted to a cipher key
+                                   getDataItemAndIndex(upvoted, fetchedItem);
+                               } else {
+                                   --waiting;
+                               }
                            }
 
                            for (var i = 0, len = lists.length; i < len; ++i) {
                                for (var j = 0, jlen = lists[i].length; j < jlen; ++j) {
                                    var upvoted = getUpvotedCached(lists[i][j]);
                                    if (upvoted === null) {
-                                       getUpvotedEncryptedCached(params, lists[i][j], gotUpvotedEncryptedCached(lists[i][j]));
+                                       getUpvotedEncryptedCached(params, lists[i][j], gotUpvotedEncryptedCached);
                                    } else {
                                        verifyAndGet(lists[i][j], upvoted);
                                    }
