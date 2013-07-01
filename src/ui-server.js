@@ -198,6 +198,10 @@ function userFollowList(username) {
 // which have arrived since our last download.
 // TODO: what if we ever need to rewind due to an error? Redo the
 // whole stream?
+// FIXME: as above, if fetching an item fails we need a way to try
+// fetching again at some point, and an efficient way to note that
+// fetching it failed and we would like to reprocess anything that
+// depends on the data if we ever successfully download it.
 var offsets = {
     // "https://example.org/data?references=...,...": 137
 };
