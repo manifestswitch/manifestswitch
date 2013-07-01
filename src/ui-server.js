@@ -890,6 +890,85 @@ var user_posts = {
 function getDataPostsHtml(params) {
     var body, status;
 
+    function gotPeerContent(lists) {
+        var waiting = 0;
+        var child_posts = [];
+
+        function sendFinal() {
+            var html = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body><ul>';
+            var posts;
+            if ((username in user_posts) && (hash in user_posts[username])) {
+                posts = Object.keys(user_posts[username][hash]);
+                for (var k = 0, klen = posts.length; k < klen; ++k) {
+                    html += '<li><a class="hash" href="/post/' + posts[k] + '">' + posts[k] + '</a></li>';
+                }
+            }
+            html += '</ul><div><a href="/posts/form?parent=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855">Add</a></div>';
+            html += '<div><a href="/">Home</a></div></body></html>';
+
+            sendResponse(params, 200, html);
+        }
+
+        function fetchedItem(hex, data) {
+            --waiting;
+
+            var parent = getPostParentCached(hex, data);
+
+            if (parent === hash) {
+                child_posts.push(hex);
+            }
+
+            if (waiting === 0) {
+                if (!(username in user_posts)) {
+                    user_posts[username] = {};
+                }
+                if (!(hash in user_posts[username])) {
+                    user_posts[username][hash] = {};
+                }
+
+                for (var k = 0, klen = child_posts.length; k < klen; ++k) {
+                    user_posts[username][hash][child_posts[k]] = true;
+                }
+
+                sendFinal();
+            }
+        }
+
+        function verifyAndGet(container, upvoted) {
+            // TODO: actually verify the signature
+            if (true || verifySignature(container)) {
+                getDataItemAndIndex(upvoted, fetchedItem);
+            } else {
+                --waiting;
+            }
+        }
+
+        function gotUpvotedEncryptedCached(upvoted) {
+            if (upvoted !== null) {
+                // doesn't need a signature because it was encrypted to a cipher key
+                getDataItemAndIndex(upvoted, fetchedItem);
+            } else {
+                --waiting;
+            }
+        }
+
+        for (var i = 0, len = lists.length; i < len; ++i) {
+            for (var j = 0, jlen = lists[i].length; j < jlen; ++j) {
+                var upvoted = getUpvotedCached(lists[i][j]);
+                if (upvoted === null) {
+                    getUpvotedEncryptedCached(params, lists[i][j], gotUpvotedEncryptedCached);
+                } else {
+                    verifyAndGet(lists[i][j], upvoted);
+                }
+                ++waiting;
+            }
+        }
+
+        if (waiting === 0) {
+            sendFinal();
+        }
+    }
+
     if (sessionGet(params, 'usename') === null) {
         status = 403;
         body = '<h1>403 Forbidden: You must be logged in </h1><a href="/">Continue</a>';
@@ -917,88 +996,9 @@ function getDataPostsHtml(params) {
     // c) Filter the list to only those containing "~post($hash)"
 
     var username = sessionGet(params, 'username');
-    refreshPeerContent(username,
-                       // lists contains all of the newly discovered
-                       // hashes (possibly with duplicates)
-                       function (lists) {
-
-                           var waiting = 0;
-                           var child_posts = [];
-
-                           function sendFinal() {
-                               var html = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body><ul>';
-                               var posts;
-                               if ((username in user_posts) && (hash in user_posts[username])) {
-                                   posts = Object.keys(user_posts[username][hash]);
-                                   for (var k = 0, klen = posts.length; k < klen; ++k) {
-                                       html += '<li><a class="hash" href="/post/' + posts[k] + '">' + posts[k] + '</a></li>';
-                                   }
-                               }
-                               html += '</ul><div><a href="/posts/form?parent=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855">Add</a></div>';
-                               html += '<div><a href="/">Home</a></div></body></html>';
-
-                               sendResponse(params, 200, html);
-                           }
-
-                           function fetchedItem(hex, data) {
-                               --waiting;
-
-                               var parent = getPostParentCached(hex, data);
-
-                               if (parent === hash) {
-                                   child_posts.push(hex);
-                               }
-
-                               if (waiting === 0) {
-                                   if (!(username in user_posts)) {
-                                       user_posts[username] = {};
-                                   }
-                                   if (!(hash in user_posts[username])) {
-                                       user_posts[username][hash] = {};
-                                   }
-
-                                   for (var k = 0, klen = child_posts.length; k < klen; ++k) {
-                                       user_posts[username][hash][child_posts[k]] = true;
-                                   }
-
-                                   sendFinal();
-                               }
-                           }
-
-                           function verifyAndGet(container, upvoted) {
-                               // TODO: actually verify the signature
-                               if (true || verifySignature(container)) {
-                                   getDataItemAndIndex(upvoted, fetchedItem);
-                               } else {
-                                   --waiting;
-                               }
-                           }
-
-                           function gotUpvotedEncryptedCached(upvoted) {
-                               if (upvoted !== null) {
-                                   // doesn't need a signature because it was encrypted to a cipher key
-                                   getDataItemAndIndex(upvoted, fetchedItem);
-                               } else {
-                                   --waiting;
-                               }
-                           }
-
-                           for (var i = 0, len = lists.length; i < len; ++i) {
-                               for (var j = 0, jlen = lists[i].length; j < jlen; ++j) {
-                                   var upvoted = getUpvotedCached(lists[i][j]);
-                                   if (upvoted === null) {
-                                       getUpvotedEncryptedCached(params, lists[i][j], gotUpvotedEncryptedCached);
-                                   } else {
-                                       verifyAndGet(lists[i][j], upvoted);
-                                   }
-                                   ++waiting;
-                               }
-                           }
-
-                           if (waiting === 0) {
-                               sendFinal();
-                           }
-                       });
+    // lists contains all of the newly discovered hashes (possibly
+    // with duplicates)
+    refreshPeerContent(username, gotPeerContent);
 }
 
 function getPostsFormHtml(params) {
