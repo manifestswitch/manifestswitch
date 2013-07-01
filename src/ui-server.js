@@ -772,6 +772,11 @@ var upvotes = {
 
 var upvoteRegex = /~upvote\(([0-9a-f]{64})\)/;
 
+function getPostFromData(data) {
+    var match = data.match(parentsRegex);
+    return (match === null) ? null : match[1];
+}
+
 function getUpvoteFromData(data) {
     var match = data.match(upvoteRegex);
     return (match === null) ? null : match[1];
@@ -879,8 +884,7 @@ function getPostParentCached(hex, data) {
         if (data === null) {
             return null;
         }
-        var match = data.match(parentsRegex);
-        parents[hex] = (match === null) ? null : match[1];
+        parents[hex] = getPostFromData(data);
     }
     return parents[hex];
 }
