@@ -840,7 +840,7 @@ var upvotesEncrypted = {
 function getUpvotedEncryptedCached(params, hex, cont) {
     function gotDecrypt(data) {
         if (data === null) {
-            cont(null);
+            cont(hex, null);
             return;
         }
         var match = data.match(upvoteRegex);
@@ -848,20 +848,20 @@ function getUpvotedEncryptedCached(params, hex, cont) {
             upvotesEncrypted[username] = {};
         }
         upvotesEncrypted[username][hex] = (match === null) ? null : match[1];
-        cont(upvotesEncrypted[username][hex]);
+        cont(hex, upvotesEncrypted[username][hex]);
     }
 
     var username = sessionGet(params, 'username');
     if (!(username in upvotesEncrypted) || !(hex in upvotesEncrypted[username])) {
         var data = getDataCached(hex);
         if (data === null) {
-            cont(null);
+            cont(hex, null);
             return;
         }
         getDecrypt(params, data, gotDecrypt);
         return;
     }
-    cont(upvotesEncrypted[username][hex]);
+    cont(hex, upvotesEncrypted[username][hex]);
 }
 
 // If there is a parent, returns it
@@ -941,10 +941,15 @@ function getDataPostsHtml(params) {
         }
     }
 
-    function gotUpvotedEncryptedCached(upvoted) {
+    function gotUpvotedEncryptedCached(hex, upvoted) {
         if (upvoted !== null) {
             // doesn't need a signature because it was encrypted to a cipher key
             getDataItemAndIndex(upvoted, fetchedItem);
+        } else if (false && isEncryptedPost(hex)) {
+            // if there wasn't an upvote, but the hex refers to an
+            // encrypted post itself, then we should check if the post
+            // is a child of this parent.
+            fetchedItem(hex, theDecryptedContentOfHex);
         } else {
             --waiting;
         }
@@ -957,6 +962,8 @@ function getDataPostsHtml(params) {
             for (var j = 0, jlen = lists[i].length; j < jlen; ++j) {
                 var upvoted = getUpvotedCached(lists[i][j]);
                 if (upvoted === null) {
+                    // FIXME: this should be changed to "getDecrypt",
+                    // parsing that how we like.
                     getUpvotedEncryptedCached(params, lists[i][j], gotUpvotedEncryptedCached);
                 } else {
                     verifyAndGet(lists[i][j], upvoted);
