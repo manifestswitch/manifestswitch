@@ -952,6 +952,8 @@ function getDataPostsHtml(params) {
 
     function gotPeerContent(lists) {
         for (var i = 0, len = lists.length; i < len; ++i) {
+            waiting += lists[i].length;
+
             for (var j = 0, jlen = lists[i].length; j < jlen; ++j) {
                 var upvoted = getUpvotedCached(lists[i][j]);
                 if (upvoted === null) {
@@ -959,7 +961,6 @@ function getDataPostsHtml(params) {
                 } else {
                     verifyAndGet(lists[i][j], upvoted);
                 }
-                ++waiting;
             }
         }
 
