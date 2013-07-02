@@ -905,9 +905,7 @@ function getDataPostsHtml(params) {
         var parent = getPostParentCached(hex, data);
 
         if (parent === null) {
-            // TODO: try decrypting this to see if it's an encrypted post
-            // (move the other post decryption code here)
-            decAndCheck();
+            getDecrypt(params, data, gotDecrypt(hex, true));
             return;
         }
 
@@ -924,21 +922,25 @@ function getDataPostsHtml(params) {
         }
     }
 
-    function gotDecrypt(hex) {
+    function gotDecrypt(hex, isFinal) {
         return function (decrypt) {
             if (decrypt === null) {
                 decAndCheck();
                 return;
             }
-            var upvoted = getUpvoteFromData(decrypt);
 
-            // XXX: currently this means "~upvote()...~post()" will
-            // ignore the post.
-            if (upvoted !== null) {
-                // doesn't need a signature because it was encrypted
-                // to a cipher key
-                getDataItemAndIndex(upvoted, fetchedItem);
-                return;
+            // check to prevent us following upvotes of upvotes
+            if (!isFinal) {
+                var upvoted = getUpvoteFromData(decrypt);
+
+                // XXX: currently this means "~upvote()...~post()" will
+                // ignore the post.
+                if (upvoted !== null) {
+                    // doesn't need a signature because it was encrypted
+                    // to a cipher key
+                    getDataItemAndIndex(upvoted, fetchedItem);
+                    return;
+                }
             }
             var post = getPostFromData(decrypt);
 
@@ -952,7 +954,7 @@ function getDataPostsHtml(params) {
     }
 
     function gotItemForDecrypt(hex, data) {
-        getDecrypt(params, data, gotDecrypt(hex));
+        getDecrypt(params, data, gotDecrypt(hex, false));
     }
 
     function gotPeerContent(lists) {
