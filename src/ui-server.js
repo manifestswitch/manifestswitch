@@ -880,14 +880,20 @@ function getDataPostsHtml(params) {
         sendResponse(params, 200, html);
     }
 
-    function fetchedItem(hex, data) {
+    function decAndCheck() {
         --waiting;
+        if (waiting === 0) {
+            sendFinal();
+        }
+    }
 
+    function fetchedItem(hex, data) {
         var parent = getPostParentCached(hex, data);
 
         if (parent === null) {
             // TODO: try decrypting this to see if it's an encrypted post
             // (move the other post decryption code here)
+            decAndCheck();
             return;
         }
 
@@ -903,9 +909,7 @@ function getDataPostsHtml(params) {
         // XXX: this will also index encrypted posts
         user_posts[username][parent][hex] = true;
 
-        if (waiting === 0) {
-            sendFinal();
-        }
+        decAndCheck();
     }
 
     function verifyAndGet(container, upvoted) {
@@ -913,14 +917,14 @@ function getDataPostsHtml(params) {
         if (true || verifySignature(container)) {
             getDataItemAndIndex(upvoted, fetchedItem);
         } else {
-            --waiting;
+            decAndCheck();
         }
     }
 
     function gotDecrypt(hex) {
         return function (decrypt) {
             if (decrypt === null) {
-                --waiting;
+                decAndCheck();
                 return;
             }
             var upvoted = getUpvoteFromData(decrypt);
@@ -939,7 +943,7 @@ function getDataPostsHtml(params) {
                 fetchedItem(hex, decrypt);
                 return;
             }
-            --waiting;
+            decAndCheck();
         };
     }
 
@@ -948,6 +952,7 @@ function getDataPostsHtml(params) {
     }
 
     function gotPeerContent(lists) {
+        waiting += 1;
         for (var i = 0, len = lists.length; i < len; ++i) {
             waiting += lists[i].length;
 
@@ -960,10 +965,7 @@ function getDataPostsHtml(params) {
                 }
             }
         }
-
-        if (waiting === 0) {
-            sendFinal();
-        }
+        decAndCheck();
     }
 
     if (sessionGet(params, 'usename') === null) {
