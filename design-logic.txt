@@ -58,8 +58,8 @@ hash.
 
 This should be the sha256 of a content. sha1 is compromised so must
 not be used. sha256 is considered safe. sha512 is safe but the hash is
-larger than for sha256 and it needn't be considered, since sha256 is
-the smallest sufficient hash.
+larger than for sha256. sha256 presents a good trade-off between peer
+review and hash length.
 
 Data services *should* try to allow multiple content to be known for a
 given hash in case of genuine collision, and allow the client to
@@ -76,23 +76,25 @@ There is no specified system by which to get the data for a given
 hash, or relating to a given hash. It is up for the client to
 interface with such services.
 
-[ NOTE Possibly include, but reword or place elsewhere ]
-The client is the authority that decides which data is desired for
-download, and it asks for that data from any service(s) it chooses. If
-the client asks for any service to recommend data to be consumed, that
-service is considered client level, not server level, and the user
-must be aware of this and trust that it ultimately.
-[ /NOTE ]
+The client is the only authority that decides which data is desired
+for download, and it asks for that data from any service(s) it
+chooses. If the client asks for any service to recommend data to be
+consumed, that service is considered client level, not server level,
+and the user must be aware of this and trust that it ultimately. The
+data server must not respond with different data based on the user
+that requests it - only the client interface may do this.
 
 
-"GPG is used to sign structural facts."
+"GPG signing or symmetric encryption is used to authenticate
+structural facts."
 
 There are potentially infinite entries held in a service. Clients
-should only consider content to be relevant if it is correctly signed
-by a peer.
+should only consider content to be relevant if it is either correctly
+signed by a trusted peer, or encrypted by a symmetric encryption key.
 
-Optionally, data should be encrypted to our own public key when it is
- considered private.
+Additionally, data should be encrypted to a user's public key if it is
+intended to be read only by that user and none others, in addition to
+one of the above.
 
 Decentralisation implies there is no single authority on any given
 statement - clients must be able to handle potentially conflicting
@@ -103,22 +105,21 @@ it represents them to its user.
 
 "'Follower trees' may optionally be published."
 
-A client may submit a signed list of users it recommends everyone to
-read for certain information, specifying the public key ID. This
-allows public networks of trust in content curating, editing and
-publishing to form. A client should allow in addition or instead to
-maintain a private list of keys to follow that is not made publically
-available.
+A client may submit an authenticated (see above) list of users that it
+recommends other users to follow, specifying the signing public key of
+the users to follow. This allows public networks of trust in content
+curating, editing and publishing to form. A client should allow in
+addition or instead to maintain a private list of keys to follow that
+is not made publically available.
 
 An algorithm may be used for transitively trusting an extended network
 for its voting opinion on content, if a user believes that their
 peer's own network contains only or mostly reliable voters.
 
 Such a network algorithm would provide a healthy balance between
-considering on all votes as valid (including unsigned or ones signed
-by any given key - ie. mostly bot votes), and only considering content
-which has been upvoted by a user's friend network of perhaps hundreds
-of people.
+considering all votes as valid (including unauthenticated/untrusted
+votes), and only considering content which has been upvoted by a
+user's friend network of perhaps hundreds of people.
 
 Using such an algorithm on these published networks may allow a user's
 extended network of hundreds of thousands to be considered when
