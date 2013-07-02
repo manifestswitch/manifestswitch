@@ -864,7 +864,6 @@ var user_posts = {
 function getDataPostsHtml(params) {
     var body, status;
     var waiting = 0;
-    var child_posts = [];
 
     function sendFinal() {
         var html = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body><ul>';
@@ -886,22 +885,25 @@ function getDataPostsHtml(params) {
 
         var parent = getPostParentCached(hex, data);
 
-        if (parent === hash) {
-            child_posts.push(hex);
+        if (parent === null) {
+            // TODO: try decrypting this to see if it's an encrypted post
+            // (move the other post decryption code here)
+            return;
         }
 
+        // Index even if it's on another parent - we only traverse the
+        // stream once so there's no other opportunity to do this.
+        if (!(username in user_posts)) {
+            user_posts[username] = {};
+        }
+        if (!(parent in user_posts[username])) {
+            user_posts[username][parent] = {};
+        }
+
+        // XXX: this will also index encrypted posts
+        user_posts[username][parent][hex] = true;
+
         if (waiting === 0) {
-            if (!(username in user_posts)) {
-                user_posts[username] = {};
-            }
-            if (!(hash in user_posts[username])) {
-                user_posts[username][hash] = {};
-            }
-
-            for (var k = 0, klen = child_posts.length; k < klen; ++k) {
-                user_posts[username][hash][child_posts[k]] = true;
-            }
-
             sendFinal();
         }
     }
