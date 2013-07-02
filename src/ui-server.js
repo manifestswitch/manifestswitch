@@ -887,16 +887,7 @@ function getDataPostsHtml(params) {
         }
     }
 
-    function fetchedItem(hex, data) {
-        var parent = getPostParentCached(hex, data);
-
-        if (parent === null) {
-            // TODO: try decrypting this to see if it's an encrypted post
-            // (move the other post decryption code here)
-            decAndCheck();
-            return;
-        }
-
+    function setParent(hex, parent) {
         // Index even if it's on another parent - we only traverse the
         // stream once so there's no other opportunity to do this.
         if (!(username in user_posts)) {
@@ -908,7 +899,19 @@ function getDataPostsHtml(params) {
 
         // XXX: this will also index encrypted posts
         user_posts[username][parent][hex] = true;
+    }
 
+    function fetchedItem(hex, data) {
+        var parent = getPostParentCached(hex, data);
+
+        if (parent === null) {
+            // TODO: try decrypting this to see if it's an encrypted post
+            // (move the other post decryption code here)
+            decAndCheck();
+            return;
+        }
+
+        setParent(hex, parent);
         decAndCheck();
     }
 
@@ -940,9 +943,8 @@ function getDataPostsHtml(params) {
             var post = getPostFromData(decrypt);
 
             if (post !== null) {
-                // Note: this is the hash of the encrypted post,
-                // not the decrypted content.
-                fetchedItem(hex, decrypt);
+                setParent(hex, post);
+                decAndCheck();
                 return;
             }
             decAndCheck();
