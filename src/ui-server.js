@@ -874,7 +874,7 @@ function getDataPostsHtml(params) {
                 html += '<li><a class="hash" href="/post/' + posts[k] + '">' + posts[k] + '</a></li>';
             }
         }
-        html += '</ul><div><a href="/posts/form?parent=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855">Add</a></div>';
+        html += '</ul><div><a href="/posts/form?parent=' + hash + '">Add</a></div>';
         html += '<div><a href="/">Home</a></div></body></html>';
 
         sendResponse(params, 200, html);
