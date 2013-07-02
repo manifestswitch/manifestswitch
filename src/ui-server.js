@@ -929,6 +929,8 @@ function getDataPostsHtml(params) {
             }
             var upvoted = getUpvoteFromData(decrypt);
 
+            // XXX: currently this means "~upvote()...~post()" will
+            // ignore the post.
             if (upvoted !== null) {
                 // doesn't need a signature because it was encrypted
                 // to a cipher key
