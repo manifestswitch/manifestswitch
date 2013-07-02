@@ -1024,18 +1024,10 @@ function getPostsFormHtml(params) {
 }
 
 function gotPostItem(params) {
-    return function (hash, data) {
-        if (data === null) {
-            // TODO: add some knowledge of 410 hashes
-            sendResponse(params, 404, 'No such hash <a href="/posts">Back</a>');
-            return;
-        }
-        var parent = getPostParentCached(hash, data), parentLink;
-        if (parent === null) {
-            parentLink = '';
-        } else {
-            parentLink = '<div><a href="/post/' + parent + '">Parent</a></div>';
-        }
+    var hash, data, parent;
+
+    function printLiteral() {
+        var parentLink = (parent === null) ? '' : '<div><a href="/post/' + parent + '">Parent</a></div>';
         var body = ('<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body><h1 class="hash">' +
                     hash +
                     '</h1><pre>' +
@@ -1043,7 +1035,38 @@ function gotPostItem(params) {
                     '</pre>' + parentLink + '<div><a href="/posts?parent=' + hash + '">Comments</a><div><a href="/posts/form?parent=' + hash + '">Reply</a></div></div><div><a href="/posts">Back</a></div></body></html>');
 
         sendResponse(params, 200, body);
+    }
+
+    function gotDecrypt(decrypt) {
+        if (decrypt !== null) {
+            data = decrypt;
+            parent = getPostFromData(decrypt);
+        }
+        printLiteral();
+    }
+
+    function gotPostItemLiteral(h, d) {
+        hash = h;
+        data = d;
+
+        if (data === null) {
+            // TODO: add some knowledge of 410 hashes
+            sendResponse(params, 404, 'No such hash <a href="/posts">Back</a>');
+            return;
+        }
+
+        // Note we only try decrypting if the current content doesn't
+        // show a ~post()
+        parent = getPostParentCached(hash, data);
+
+        if (parent === null) {
+            getDecrypt(params, data, gotDecrypt);
+        } else {
+            printLiteral();
+        }
     };
+
+    return gotPostItemLiteral;
 }
 
 function getPostItemHtml(params) {
