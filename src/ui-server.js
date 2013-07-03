@@ -1036,7 +1036,8 @@ function gotPostItem(params) {
         params.headers['Cache-Control'] = 'max-age=300';
 
         var parentLink = (parent === null) ? '' : '<div><a href="/post/' + parent + '">Parent</a></div>';
-        var body = ('<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body><h1 class="hash">' +
+        var title = '';
+        var body = ('<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body>' + title + '<h2 class="hash">' +
                     hash +
                     '</h1><pre>' +
                     data +
