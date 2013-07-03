@@ -1216,7 +1216,7 @@ function gotPostPost(params, query) {
     }
 
     function gotIv(iv) {
-        var thepost = '~post(' + query.parent + ')\n~date(' + (new Date()).getTime() + ')\n' + query.content;
+        var thepost = '~post(' + query.parent + ')\n~date(' + Date.now() + ')\n' + query.content;
         var algo = 'aes-256-cbc';
         enc += '~iv(' + iv.toString('base64') + ')\n~cipher(' + algo + ')\n~data(';
         cipher = crypto.createCipheriv(algo, getUserKey(params), iv);

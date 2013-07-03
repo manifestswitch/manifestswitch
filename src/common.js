@@ -125,7 +125,7 @@ var async_id = '';
 // of work
 function runAsyncLog() {
     async_will_log = false;
-    var str = '', date = (new Date()).getTime() + ' ';
+    var str = '', date = Date.now() + ' ';
 
     for (var item, e, i = 0, len = async_log_jobs.length; i < len; ++i) {
         item = async_log_jobs[i];
@@ -371,7 +371,7 @@ function sendResponse(params, status, body) {
         params.response.end(body);
     }
 
-    trace((new Date()).getTime() + '\t' + status + ' ' + params.headers['Content-Length']);
+    trace(Date.now() + '\t' + status + ' ' + params.headers['Content-Length']);
 }
 
 function sendRawResponse(params, status, body) {
@@ -388,7 +388,7 @@ function sendRawResponse(params, status, body) {
         params.response.end(body);
     }
 
-    trace((new Date()).getTime() + '\t' + status + ' ' + body.length);
+    trace(Date.now() + '\t' + status + ' ' + body.length);
 }
 
 function redirectTo(params, location) {
@@ -759,7 +759,7 @@ function clusterDisconnect(worker) {
 /// CORE HTTP server
 
 function doReq(req, res) {
-    trace((new Date()).getTime() + '\t' + req.method + ' ' + req.url);
+    trace(Date.now() + '\t' + req.method + ' ' + req.url);
 
     var d = domain.create();
 
