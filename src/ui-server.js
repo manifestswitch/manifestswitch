@@ -142,6 +142,9 @@ future, find or make a library to do this efficiently.
 var ui_server_css = '.hash { font-family: monospace; }';
 var ui_server_css_gzip = new Buffer('H4sICIuczFECA2RhdGEtc2VydmVyLmNzcwDTy0gszlCoVkjLzyvRTUvMzcyptFLIzc/LLy5ITE61VqjlAgB3ZlLSIgAAAA==', 'base64');
 
+var ui_server_js = _UI_SERVER_JS_;
+var ui_server_js_gzip = null;
+
 var userdb = [
     { 'username': 'user', 'password': 'pass', 'gpgdir': 'var/gpg/user' },
     { 'username': 'user2', 'password': 'pass', 'gpgdir': 'var/gpg/user2' }
@@ -1087,6 +1090,14 @@ function getStyleCss(params) {
     sendResponse(params, 200, ui_server_css);
 }
 
+function getScriptJs(params) {
+    params.contentType = 'text/javascript; charset=utf-8';
+    // 365 days
+    params.headers['Cache-Control'] = 'max-age=31536000';
+    // TODO: pre gzip -9 this into a new Buffer
+    sendRawResponse(params, 200, ui_server_js);
+}
+
 function followUntilSuccess(params, protocol, options, payload, cont, scount) {
     function gotResponse(res) {
         if (res.statusCode >= 200 && res.statusCode <= 299) {
@@ -1317,6 +1328,12 @@ var places_exact = {
     '/style': {
         'GET': [
             { type: 'text/css', action: getStyleCss }
+        ]
+    },
+
+    '/script': {
+        'GET': [
+            { type: 'text/javascript', action: getScriptJs }
         ]
     },
 
