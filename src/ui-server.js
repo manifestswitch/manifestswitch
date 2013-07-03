@@ -1027,6 +1027,11 @@ function gotPostItem(params) {
     var hash, data, parent;
 
     function printLiteral() {
+        // 5 minutes. Main reason to keep this short is in case
+        // javascript or style is accidentally broken and needs to be
+        // fixed quickly
+        params.headers['Cache-Control'] = 'max-age=300';
+
         var parentLink = (parent === null) ? '' : '<div><a href="/post/' + parent + '">Parent</a></div>';
         var body = ('<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body><h1 class="hash">' +
                     hash +
