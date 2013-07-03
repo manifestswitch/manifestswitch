@@ -1040,7 +1040,7 @@ function gotPostItem(params) {
         var body = ('<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body>' + title + '<h2 class="hash">' +
                     hash +
                     '</h1><pre>' +
-                    data +
+                    data.replace(parentsRegex, '') +
                     '</pre>' + parentLink + '<div><a href="/posts?parent=' + hash + '">Comments</a><div><a href="/posts/form?parent=' + hash + '">Reply</a></div></div><div><a href="/posts">Back</a></div></body></html>');
 
         sendResponse(params, 200, body);
