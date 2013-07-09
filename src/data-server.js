@@ -62,33 +62,8 @@ var data_server_css_gzip = new Buffer('H4sICIuczFECA2RhdGEtc2VydmVyLmNzcwDTy0gsz
 
 ////////////////////////////////////////////////////////////////////////////////
 
-var pg = require('pg').native;
 var ds_refers_conf = "postgres://ds_refers:_DS_REFERS_PASS_@localhost:5432/ds_refers";
 var ds_content_conf = "postgres://ds_content:_DS_CONTENT_PASS_@localhost:5432/ds_content";
-
-function perform_query(conf, query, params, cb) {
-    var done_save;
-
-    function got_query(err, result) {
-        done_save();
-
-        if (err) {
-            cb(err, null);
-            return;
-        }
-        cb(null, result);
-    }
-
-    function got_connect(err, client, done) {
-        done_save = done;
-        if (err) {
-            cb(err, null);
-            return;
-        }
-        client.query(query, params, got_query);
-    }
-    pg.connect(conf, got_connect);
-}
 
 function ds_content_query(query, params, cb) {
     perform_query(ds_content_conf, query, params, cb);

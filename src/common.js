@@ -37,6 +37,8 @@ var url = require('url');
 var fs = require('fs');
 var crypto = require('crypto');
 
+var pg = require('pg').native;
+
 //// Site Infrastructure
 
 // 80 -> upgrade_success -> 443
@@ -192,6 +194,33 @@ function getReferencedHashes(content) {
         r = hash_re.exec(content);
     }
     return hashes;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Database
+
+function perform_query(conf, query, params, cb) {
+    var done_save;
+
+    function got_query(err, result) {
+        done_save();
+
+        if (err) {
+            cb(err, null);
+            return;
+        }
+        cb(null, result);
+    }
+
+    function got_connect(err, client, done) {
+        done_save = done;
+        if (err) {
+            cb(err, null);
+            return;
+        }
+        client.query(query, params, got_query);
+    }
+    pg.connect(conf, got_connect);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
