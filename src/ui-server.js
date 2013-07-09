@@ -35,7 +35,6 @@ hasSession,
 sessionStart,
 process,
 url,
-sessionGet,
 sendResponse,
 htmlEscape,
 async_log,
@@ -186,6 +185,18 @@ var referred_by = {
 var posted_by = {
     //'user2': [datadb[0]]
 };
+
+var us_users_conf = "postgres://us_users:_US_USERS_PASS_@localhost:5432/us_users";
+var us_sessions_conf = "postgres://us_sessions:_US_SESSIONS_PASS_@localhost:5432/us_sessions";
+
+function us_users_query(query, params, cb) {
+    perform_query(us_users_conf, query, params, cb);
+}
+
+function us_sessions_query(query, params, cb) {
+    perform_query(us_sessions_conf, query, params, cb);
+}
+
 
 // returns a list of all hashes that the user wants to follow
 // references of
@@ -517,6 +528,34 @@ function refreshPeerContent(username, cont) {
 
 // LOGIN CODE
 
+function deleteSession(sessionId, cont) {
+    us_sessions_query("DELETE FROM sessions WHERE identifier=$1",
+                      [sessionId],
+                      cont);
+}
+
+function getUsername(params, username, cont) {
+    function gotUsername(err, result) {
+        if (err !== null) {
+            async_log('getUsername error', err);
+        }
+
+        if ((result !== null) && (result.rows.length === 1)) {
+            cont(result.rows[0].username);
+        } else {
+            cont(null);
+        }
+    }
+
+    if (!hasSessionCookie(params)) {
+        cont(null);
+        return;
+    }
+    us_sessions_query("SELECT username FROM sessions WHERE identifier=$1",
+                      [params.cookies.s.value],
+                      gotUsername);
+}
+
 // I don't bother SHA'ing the password, it can be cracked easily. The
 // only way to fully prevent cracking would be to use scrypt and DOS
 // our own server, doesn't seem worth it considering 99% of the data
@@ -540,25 +579,40 @@ function authenticate_checker(username, password, cont) {
 }
 
 function authenticate_continue(params, username) {
-    var savedResult = null;
+    var savedResult = null, sessionId;
 
-    function gotSessid() {
-        sessionSet(params, 'username', savedResult ? username : null);
+    function createdSession(err, result) {
+        if (err !== null) {
+            async_log('createSession error', err);
+        }
+        params.cookies.s = { value: sessionId };
         redirectTo(params, '/login/result');
     }
 
+    function gotSessionId(sessId) {
+        sessionId = sessId;
+        // expires with one day of inactivity, or when browser is closed
+        us_sessions_query("INSERT INTO sessions (identifier, expires, username) VALUES ($1, CURRENT_TIMESTAMP+'1d', $2)",
+                          [sessId, username],
+                          createdSession);
+    }
+
+    function cleared() {
+        if (!savedResult) {
+            redirectTo(params, '/login/result');
+            return;
+        }
+        createSessionId(gotSessionId);
+    }
+
     return function (result) {
-        if (!result && !hasSession(params)) {
-            redirectTo(params, '/login/result');            
+        var hc = hasSessionCookie(params);
+        savedResult = result;
 
+        if (hc) {
+            deleteSession(params.cookies.s.value, cleared);
         } else {
-            savedResult = result;
-
-            if (hasSession(params)) {
-                gotSessid();
-            } else {
-                sessionStart(params, gotSessid);
-            }
+            cleared();
         }
     };
 }
@@ -581,45 +635,56 @@ function postLogin(params) {
 ////////////////////////////////////////////////////////////////////////////////
 
 function getLoginResultPlain(params) {
-    var body, status;
-    if (sessionGet(params, 'username') !== null) {
-        status = 200;
-        body = '200 OK: You have successfully logged in';
-    } else {
-        status = 403;
-        body = '403 Forbidden: Login failed';
+    function gotUsername(username) {
+        var body, status;
+        if (username !== null) {
+            status = 200;
+            body = '200 OK: You have successfully logged in';
+        } else {
+            status = 403;
+            body = '403 Forbidden: Login failed';
+        }
+        sendResponse(params, status, body);
     }
-    sendResponse(params, status, body);
+    getUsername(params, 'username', gotUsername);
 }
 
 function getLoginResultJson(params) {
-    var body, status;
-    if (sessionGet(params, 'username') !== null) {
-        status = 200;
-        body = '{ "status": 200, "result": "OK", "message": "You have successfully logged in" }';
-    } else {
-        status = 403;
-        body = '{ "status": 403, "result": "Forbidden", "message": "Login failed" }';
+    function gotUsername(username) {
+        var body, status;
+        if (username !== null) {
+            status = 200;
+            body = '{ "status": 200, "result": "OK", "message": "You have successfully logged in" }';
+        } else {
+            status = 403;
+            body = '{ "status": 403, "result": "Forbidden", "message": "Login failed" }';
+        }
+        sendResponse(params, status, body);
     }
-    sendResponse(params, status, body);
+    getUsername(params, 'username', gotUsername);
 }
 
 function getLoginResultHtml(params) {
-    var body, status;
-    if (sessionGet(params, 'usename') !== null) {
-        status = 200;
-        body = '<h1>200 OK: You have successfully logged in</h1><a href="/">Continue</a>';
-    } else {
-        status = 403;
-        body = '<h1>403 Forbidden: Login failed</h1><a href="/">Continue</a>';
+    function gotUsername(username) {
+        var body, status;
+        if (username !== null) {
+            status = 200;
+            body = '<h1>200 OK: You have successfully logged in</h1><a href="/">Continue</a>';
+        } else {
+            status = 403;
+            body = '<h1>403 Forbidden: Login failed</h1><a href="/">Continue</a>';
+        }
+        sendResponse(params, status, body);
     }
-    sendResponse(params, status, body);
+    getUsername(params, 'username', gotUsername);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 function postLogout(params) {
-    delete params.sessions[params.cookies.s.value];
+    // allow to run asynchronously
+    deleteSession(params.cookies.s.value, do_nothing);
+    // TODO: make this expired instead
     delete params.cookies.s;
     redirectTo(params, '/logout/result');
 }
@@ -627,39 +692,49 @@ function postLogout(params) {
 ////////////////////////////////////////////////////////////////////////////////
 
 function getLogoutResultPlain(params) {
-    var body, status;
-    if (sessionGet(params, 'username') === null) {
-        status = 200;
-        body = '200 OK: You have successfully logged out';
-    } else {
-        status = 500;
-        body = '500 Internal Server Error: Logout failed';
+    function gotUsername(username) {
+        var body, status;
+        if (username === null) {
+            status = 200;
+            body = '200 OK: You have successfully logged out';
+        } else {
+            status = 500;
+            body = '500 Internal Server Error: Logout failed';
+        }
+        sendResponse(params, status, body);
     }
-    sendResponse(params, status, body);
+    getUsername(params, 'username', gotUsername);
 }
 
 function getLogoutResultJson(params) {
-    var body, status;
-    if (sessionGet(params, 'username') === null) {
-        status = 200;
-        body = '{ "status": 200, "result": "OK", "message": "You have successfully logged out" }';
-    } else {
-        status = 500;
-        body = '{ "status": 500, "result": "Internal Server Error", "message": "Logout failed" }';
+    function gotUsername(username) {
+        var body, status;
+        if (username === null) {
+            status = 200;
+            body = '{ "status": 200, "result": "OK", "message": "You have successfully logged out" }';
+        } else {
+            status = 500;
+            body = '{ "status": 500, "result": "Internal Server Error", "message": "Logout failed" }';
+        }
+        sendResponse(params, status, body);
     }
-    sendResponse(params, status, body);
+    getUsername(params, 'username', gotUsername);
 }
 
 function getLogoutResultHtml(params) {
-    var body, status;
-    if (sessionGet(params, 'usename') === null) {
-        status = 200;
-        body = '<h1>200 OK: You have successfully logged out</h1><a href="/">Continue</a>';
-    } else {
-        status = 500;
-        body = '<h1>500 Internal Server Error: Logout failed</h1><a href="/">Continue</a>';
+    function gotUsername(username) {
+        var body, status;
+        if (username === null) {
+            status = 200;
+            body = '<h1>200 OK: You have successfully logged out</h1><a href="/">Continue</a>';
+        } else {
+            status = 500;
+            body = '<h1>500 Internal Server Error: Logout failed</h1><a href="/">Continue</a>';
+        }
+        sendResponse(params, status, body);
     }
-    sendResponse(params, status, body);
+
+    getUsername(params, 'username', gotUsername);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -672,39 +747,42 @@ function getLogoutResultHtml(params) {
 //ch = spawn("/usr/bin/gpg", ["-as"]);
 
 function getHomePageHtml(params) {
-    var body, username = sessionGet(params, 'username');
 
-    body = ('<!DOCTYPE html>\n' +
-            '<html>\n' +
-            '  <head>\n' +
-            '    <title>UI</title>\n' +
-            '  </head>\n' +
-            '  <body>\n' +
-            (
-                ((username !== undefined) && (username !== null)) ?
-                    ('    <div>\n' +
-                     '      ' + htmlEscape(username) + '\n' +
-                     '    <div>\n' +
-                     '    <form action="/logout" method="POST">\n' +
-                     '      <input value="logout" type="submit">\n' +
-                     '    </form>\n')
-                    :
-                    ('    <form action="/login" method="POST">\n' +
-                     '      <label for="username">username</label>\n' +
-                     '      <input name="username" id="username" type="text">\n' +
-                     '      <label for="password">password</label>\n' +
-                     '      <input name="password" id="password" type="password">\n' +
-                     '      <input value="login" type="submit">\n' +
-                     '    </form>\n')
-            ) +
-            '    <div>\n' +
-            '      <h1>Data</h1>\n' +
-            '      <div>Stuff stuff <a href="/posts">posts</a></div>\n' +
-            '    </div>\n' +
-            '  </body>\n' +
-            '</html>');
+    function gotUsername(username) {
+        var body = ('<!DOCTYPE html>\n' +
+                    '<html>\n' +
+                    '  <head>\n' +
+                    '    <title>UI</title>\n' +
+                    '  </head>\n' +
+                    '  <body>\n' +
+                    (
+                        ((username !== undefined) && (username !== null)) ?
+                            ('    <div>\n' +
+                             '      ' + htmlEscape(username) + '\n' +
+                             '    <div>\n' +
+                             '    <form action="/logout" method="POST">\n' +
+                             '      <input value="logout" type="submit">\n' +
+                             '    </form>\n')
+                            :
+                            ('    <form action="/login" method="POST">\n' +
+                             '      <label for="username">username</label>\n' +
+                             '      <input name="username" id="username" type="text">\n' +
+                             '      <label for="password">password</label>\n' +
+                             '      <input name="password" id="password" type="password">\n' +
+                             '      <input value="login" type="submit">\n' +
+                             '    </form>\n')
+                    ) +
+                    '    <div>\n' +
+                    '      <h1>Data</h1>\n' +
+                    '      <div>Stuff stuff <a href="/posts">posts</a></div>\n' +
+                    '    </div>\n' +
+                    '  </body>\n' +
+                    '</html>');
 
-    sendResponse(params, 200, body);
+        sendResponse(params, 200, body);
+    }
+
+    getUsername(params, 'username', gotUsername);
 }
 
 /*
@@ -867,8 +945,8 @@ var user_posts = {
 
 // This returns the list of posts with at least one upvote signed by someone in our network.
 function getDataPostsHtml(params) {
-    var body, status;
-    var waiting = 0;
+    var body, status, hash;
+    var waiting = 0, username;
 
     function sendFinal() {
         var html = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body><ul>';
@@ -979,36 +1057,39 @@ function getDataPostsHtml(params) {
         decAndCheck();
     }
 
-    if (sessionGet(params, 'usename') === null) {
-        status = 403;
-        body = '<h1>403 Forbidden: You must be logged in </h1><a href="/">Continue</a>';
-        sendResponse(params, status, body);
-        return;
+    function gotUsername(u) {
+        username = u;
+        if (username === null) {
+            status = 403;
+            body = '<h1>403 Forbidden: You must be logged in </h1><a href="/">Continue</a>';
+            sendResponse(params, status, body);
+            return;
+        }
+
+        var query = url.parse(params.request.url, true).query;
+
+        if (!('parent' in query)) {
+            // just a helpful starting point
+            hash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+        } else {
+            hash = query.parent;
+        }
+
+        // a) If we do not yet have an up-to-date list of our network's
+        // current upvotes (non-repudiated), retrieve that by looping over
+        // each peer.
+        // a.1) For each peer, download everything they've ever signed
+        // a.2) For each of those content, get a filter list of their upvotes, downvotes, and novotes
+        // a.3) Where multiple votes are cast on the same content by a user, take only the most recent one.
+        // b) For each of the upvotes above, download the content it references.
+        // c) Filter the list to only those containing "~post($hash)"
+
+        // lists contains all of the newly discovered hashes (possibly
+        // with duplicates)
+        refreshPeerContent(username, gotPeerContent);
     }
 
-    var query = url.parse(params.request.url, true).query;
-    var hash;
-
-    if (!('parent' in query)) {
-        // just a helpful starting point
-        hash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
-    } else {
-        hash = query.parent;
-    }
-
-    // a) If we do not yet have an up-to-date list of our network's
-    // current upvotes (non-repudiated), retrieve that by looping over
-    // each peer.
-    // a.1) For each peer, download everything they've ever signed
-    // a.2) For each of those content, get a filter list of their upvotes, downvotes, and novotes
-    // a.3) Where multiple votes are cast on the same content by a user, take only the most recent one.
-    // b) For each of the upvotes above, download the content it references.
-    // c) Filter the list to only those containing "~post($hash)"
-
-    var username = sessionGet(params, 'username');
-    // lists contains all of the newly discovered hashes (possibly
-    // with duplicates)
-    refreshPeerContent(username, gotPeerContent);
+    getUsername(params, 'username', gotUsername);
 }
 
 function getPostsFormHtml(params) {
@@ -1258,11 +1339,13 @@ function gotPostPost(params, query) {
 // useful at this level to stop uploads hogging connections and to
 // reduce the amount of data being SHA'd.
 function postPost(params) {
-    var username = sessionGet(params, 'username');
-    if (username === null) {
-        sendResponse(params, 403, 'You must be logged in to make a post <a href="/posts">Posts</a>');
+    function gotUsername(username) {
+        if (username === null) {
+            sendResponse(params, 403, 'You must be logged in to make a post <a href="/posts">Posts</a>');
+        }
+        getFormData(params, gotPostPost);
     }
-    getFormData(params, gotPostPost);
+    getUsername(params, 'username', gotUsername);
 }
 
 function getFaviconIco(params) {

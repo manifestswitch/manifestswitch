@@ -278,8 +278,6 @@ function cookiesToList(cookies) {
 ////////////////////////////////////////////////////////////////////////////////
 /// SESSIONS
 
-var sessions = {};
-
 var rand_pool = null;
 var rand_wakeme = [];
 var rand_getting = false;
@@ -315,51 +313,14 @@ function createSessionId(cont) {
     if ((rand_pool !== null) && (rand_pool.length >= idsize)) {
         mine = rand_pool.slice(0, idsize).toString('base64');
         rand_pool = rand_pool.slice(idsize);
-
-        // this should be completely unlikely - is the check even needed?
-        if (mine in sessions) {
-            createSessionId(cont);
-        } else {
-            cont(mine);
-        }
+        cont(mine);
     } else {
         rand_wakeme.push(cont);
     }
 }
 
-function sessionStartContinueFunction(params, cont) {
-    return function (sess) {
-        params.cookies.s = { value: sess };
-        // always clear and create a fresh session to be on the save side
-        params.sessions[params.cookies.s.value] = {};
-        cont();
-    };
-}
-
-function sessionStart(params, cont) {
-    createSessionId(sessionStartContinueFunction(params, cont));
-}
-
-// it's a programmer error if sessionStart() hasn't been called first.
-function sessionSet(params, key, value) {
-    params.sessions[params.cookies.s.value][key] = value;
-}
-
-function hasSession(params) {
-    return ('s' in params.cookies) && (params.cookies.s.value in params.sessions);
-}
-
-function sessionGet(params, key) {
-    if (hasSession(params)) {
-        return params.sessions[params.cookies.s.value][key];
-    }
-    return null;
-}
-
-function deleteSession(params) {
-    if (hasSession(params)) {
-        delete params.sessions[params.cookies.s.value];
-    }
+function hasSessionCookie(params) {
+    return ('s' in params.cookies);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -661,7 +622,6 @@ function domainRunFunction(req, res) {
             headers: {},
             contentType: null,
             cookies: null,
-            sessions: sessions,
             place: null,
             urlparts: null
         };
@@ -682,7 +642,7 @@ function domainRunFunction(req, res) {
             // given IP has had an invalid request within the last
             // second, we disallow until it's clear.
 
-            if (!hasSession(params)) {
+            if (!hasSessionCookie(params)) {
                 // TODO: rate-limit by IP address
                 // req.connection.remoteAddress
             }
@@ -803,61 +763,11 @@ function doReq(req, res) {
     d.run(domainRunFunction(req, res));
 }
 
-////////////////////////////////////////////////////////////////////////////////
-/// PROCESS state
-
-function loadStateReadFile(cont) {
-    return function (err, data) {
-        var state;
-
-        try {
-            if (err) {
-                if (err.errno !== 34) {
-                    async_log('loadStateReadFile', err);
-                }
-                state = { sessions: {} };
-            } else {
-                state = JSON.parse(data);
-            }
-
-            sessions = state.sessions;
-        } catch (e) {
-            async_log('loadStateReadFile err', e);
-        }
-        cont();
-    };
-}
-
-function loadState(cont) {
-    fs.readFile('var/appstate', { encoding: 'utf8' }, loadStateReadFile(cont));
-}
-
-function periodicSaveStateComplete(err) {
-    if (err) {
-        async_log('periodicSaveStateComplete', err);
-    }
-}
-
-function saveStateComplete(err) {
-    periodicSaveStateComplete(err);
-    process.exit();
-}
-
-function saveStateAndExit() {
-    fs.writeFile('var/appstate', JSON.stringify({ sessions: sessions }), saveStateComplete);
-}
-
-// mild protection against unexpected crashes, only half a second of data should be lost
-function periodicSaveState() {
-    fs.writeFile('var/appstate', JSON.stringify({ sessions: sessions }), periodicSaveStateComplete);
-}
-
 var ip = '127.0.0.1';
 
-function loadStateComplete() {
-    setInterval(periodicSaveState, 500);
-    //process.on('SIGKILL', saveStateAndExit);
-    //process.on('SIGINT', saveStateAndExit);
+function startServer() {
+    //process.on('SIGKILL', cleanlyExit);
+    //process.on('SIGINT', cleanlyExit);
 
     server = http.createServer(doReq);
 
@@ -895,8 +805,7 @@ function main() {
 
         compile_places_preferred();
 
-        trace('loadState(loadStateComplete)');
-        loadState(loadStateComplete);
+        startServer();
     }
 }
 
