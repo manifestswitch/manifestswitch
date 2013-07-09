@@ -1043,7 +1043,7 @@ function gotPostItem(params) {
                     hash +
                     '</h1><pre>' +
                     data.replace(parentsRegex, '') +
-                    '</pre><div>By: Anon</div><form action="/vote" method="POST"><input type="submit" name="vote" value="downvote"><input type="submit" name="vote" value="upvote"></form>' + parentLink + '<div><a href="/posts?parent=' + hash + '">Comments</a><div><a href="/posts/form?parent=' + hash + '">Reply</a></div></div><div></div><script type="text/javascript" src="/script?v=0"></script></body></html>');
+                    '</pre><div>By: Anon</div><form action="/vote" method="POST"><input type="submit" name="vote" value="upvote"></form>' + parentLink + '<div><a href="/posts?parent=' + hash + '">Comments</a><div><a href="/posts/form?parent=' + hash + '">Reply</a></div></div><div></div><script type="text/javascript" src="/script?v=0"></script></body></html>');
 
         sendResponse(params, 200, body);
     }
