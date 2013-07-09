@@ -144,17 +144,6 @@ var ui_server_css_gzip = new Buffer('H4sICIuczFECA2RhdGEtc2VydmVyLmNzcwDTy0gszlC
 var ui_server_js = _UI_SERVER_JS_;
 var ui_server_js_gzip = null;
 
-var userdb = [
-    { 'username': 'user', 'password': 'pass', 'gpgdir': 'var/gpg/user' },
-    { 'username': 'user2', 'password': 'pass', 'gpgdir': 'var/gpg/user2' }
-];
-
-// index on username -> userdb[i]
-var by_username = {
-    'user': userdb[0],
-    'user2': userdb[1]
-};
-
 // what we are ultimately looking for is the hashes of all our
 // friend's signature fingerprints, and hash of our encryption
 // fingerprint
@@ -556,27 +545,10 @@ function getUsername(params, username, cont) {
                       gotUsername);
 }
 
-// I don't bother SHA'ing the password, it can be cracked easily. The
-// only way to fully prevent cracking would be to use scrypt and DOS
-// our own server, doesn't seem worth it considering 99% of the data
-// is public.
-//
-// FIXME: However, I should do some limiting - if an IP address shows
+// FIXME: I should do some limiting - if an IP address shows
 // up as repeatedly failing login, say 3 attempts, then A) prevent
 // many concurrent connections from that IP, B) add a sleep in to
 // thwart any cracking.
-//
-// If it's easy to add those protections for session id cracking and
-// even DOS in general, might as well do so.
-function authenticate_checker(username, password, cont) {
-    return function() {
-        if ((username in by_username) && (by_username[username].password === password)) {
-            cont(true);
-        } else {
-            cont(false);
-        }
-    };
-}
 
 function authenticate_continue(params, username) {
     var savedResult = null, sessionId;
@@ -618,9 +590,25 @@ function authenticate_continue(params, username) {
 }
 
 function authenticate(username, password, cont) {
-    // setTimeout(fn, 0); would be closer to desired call semantics,
-    // but that would needlessly add up to 10ms to response time.
-    authenticate_checker(username, password, cont)();
+    function gotPasswords(err, result) {
+        if (err !== null) {
+            async_log('users lookup error', err);
+        }
+
+        if ((result !== null) && (result.rows.length > 0)) {
+            for (var i = 0, len = result.rows.length; i < len; ++i) {
+                if (password === result.rows[i].password) {
+                    cont(true);
+                    return;
+                }
+            }
+        }
+        cont(false);
+    }
+
+    us_users_query("SELECT password FROM passwords WHERE username=$1 AND disabled=false",
+                   [username],
+                   gotPasswords);
 }
 
 function postLoginGotData(params, uparams) {
