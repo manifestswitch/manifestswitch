@@ -431,6 +431,7 @@ function getDataItem(hash, cb) {
     function selectContinue(err, result) {
         if ((result !== null) && (result.rows.length > 0)) {
             cb(result.rows[0]);
+            return;
         }
         cb(null);
     }
