@@ -106,6 +106,10 @@ var APPEND_MODE = { mode: 420, flag: 'a' };
 ////////////////////////////////////////////////////////////////////////////////
 /// LOGGING
 
+function do_nothing() {
+
+}
+
 // really bad if it happens
 function log_failure(err) {
     if (err !== null) {
