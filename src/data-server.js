@@ -33,13 +33,9 @@ var crypto,
 hash_re,
 isHexCode;
 
-var sessionSet,
-redirectTo,
-hasSession,
-sessionStart,
+var redirectTo,
 process,
 url,
-sessionGet,
 sendesponse,
 htmlEscape,
 async_log,
@@ -63,17 +59,6 @@ main;
 
 var data_server_css = '.hash { font-family: monospace; }';
 var data_server_css_gzip = new Buffer('H4sICIuczFECA2RhdGEtc2VydmVyLmNzcwDTy0gszlCoVkjLzyvRTUvMzcyptFLIzc/LLy5ITE61VqjlAgB3ZlLSIgAAAA==', 'base64');
-
-////////////////////////////////////////////////////////////////////////////////
-
-var userdb = [
-    { 'username': 'user', 'password': 'pass' }
-];
-
-// index on username -> userdb[i]
-var by_username = {
-    'user': userdb[0]
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -115,95 +100,13 @@ function ds_refers_query(query, params, cb) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// I don't bother SHA'ing the password, it can be cracked easily. The
-// only way to fully prevent cracking would be to use scrypt and DOS
-// our own server, doesn't seem worth it considering 99% of the data
-// is public.
-//
-// FIXME: However, I should do some limiting - if an IP address shows
-// up as repeatedly failing login, say 3 attempts, then A) prevent
-// many concurrent connections from that IP, B) add a sleep in to
-// thwart any cracking.
-//
-// If it's easy to add those protections for session id cracking and
-// even DOS in general, might as well do so.
-function authenticate_checker(username, password, cont) {
-    return function() {
-        if ((username in by_username) && (by_username[username].password === password)) {
-            cont(true);
-        } else {
-            cont(false);
-        }
-    };
-}
-
-function authenticate(username, password, cont) {
-    // setTimeout(fn, 0); would be closer to desired call semantics,
-    // but that would needlessly add up to 10ms to response time.
-    authenticate_checker(username, password, cont)();
-}
-
-function authenticate_continue(params, username) {
-    var savedResult = null;
-
-    function gotSessid() {
-        sessionSet(params, 'username', savedResult ? username : null);
-        redirectTo(params, '/login/result');
-    }
-
-    return function (result) {
-        if (!result && !hasSession(params)) {
-            redirectTo(params, '/login/result');            
-
-        } else {
-            savedResult = result;
-
-            if (hasSession(params)) {
-                gotSessid();
-            } else {
-                sessionStart(params, gotSessid);
-            }
-        }
-    };
-}
-
-function postLoginGotData(params, uparams) {
-    authenticate(uparams.username, uparams.password,
-                 authenticate_continue(params, uparams.username));
-}
-
-function postLogin(params) {
-    getFormData(params, postLoginGotData);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 function getHomePageHtml(params) {
-    var body, username = sessionGet(params, 'username');
-
-    body = ('<!DOCTYPE html>\n' +
+    var body = ('<!DOCTYPE html>\n' +
             '<html>\n' +
             '  <head>\n' +
             '    <title>Grafiti</title>\n' +
             '  </head>\n' +
             '  <body>\n' +
-            (
-                ((username !== undefined) && (username !== null)) ?
-                    ('    <div>\n' +
-                     '      ' + htmlEscape(username) + '\n' +
-                     '    </div>\n' +
-                     '    <form action="/logout" method="POST">\n' +
-                     '      <input value="logout" type="submit">\n' +
-                     '    </form>\n')
-                    :
-                    ('    <form action="/login" method="POST">\n' +
-                     '      <label for="username">username</label>\n' +
-                     '      <input name="username" id="username" type="text">\n' +
-                     '      <label for="password">password</label>\n' +
-                     '      <input name="password" id="password" type="password">\n' +
-                     '      <input value="login" type="submit">\n' +
-                     '    </form>\n')
-            ) +
             '    <div>\n' +
             '      <h1>Grafiti</h1>\n' +
             '      <div><a href="/data">Data list</a></div>\n' +
@@ -216,13 +119,10 @@ function getHomePageHtml(params) {
 }
 
 function getHomePagePlain(params) {
-    var body, username = sessionGet(params, 'username');
-
-    body = '';
+    var body = '';
     body += 'GET /data?first=$uint&count=$uint\n';
     body += 'POST /data{content=$utf8}\n';
     body += 'GET /data/$sha256hex\n';
-    body += 'POST /login{username=$utf8&password=$utf8}\n';
 
     sendResponse(params, 200, body);
 }
@@ -594,7 +494,7 @@ function getDataItemJson(params) {
             body = '{ "status": 410, "result": "Gone" }';
         } else {
             status = 200;
-            body = JSON.stringify({ status: 200, result: "OK", content: rv.content });
+            body = JSON.stringify({ status: 200, result: "OK", content: rv.content.toString() });
         }
         sendResponse(params, status, body);
     }
@@ -617,14 +517,6 @@ function getDataItemHtml(params) {
         sendResponse(params, status, body);
     }
     getDataItem(params.urlparts.pathname.substring('/data/'.length), gotDataItemHtml);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-function postLogout(params) {
-    delete params.sessions[params.cookies.s.value];
-    delete params.cookies.s;
-    redirectTo(params, '/logout/result');
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -752,80 +644,6 @@ function getDataResultHtml(params) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-function getLoginResultPlain(params) {
-    var body, status;
-    if (sessionGet(params, 'username') !== null) {
-        status = 200;
-        body = '200 OK: You have successfully logged in';
-    } else {
-        status = 403;
-        body = '403 Forbidden: Login failed';
-    }
-    sendResponse(params, status, body);
-}
-
-function getLoginResultJson(params) {
-    var body, status;
-    if (sessionGet(params, 'username') !== null) {
-        status = 200;
-        body = '{ "status": 200, "result": "OK", "message": "You have successfully logged in" }';
-    } else {
-        status = 403;
-        body = '{ "status": 403, "result": "Forbidden", "message": "Login failed" }';
-    }
-    sendResponse(params, status, body);
-}
-
-function getLoginResultHtml(params) {
-    var body, status;
-    if (sessionGet(params, 'usename') !== null) {
-        status = 200;
-        body = '<h1>200 OK: You have successfully logged in</h1><a href="/">Continue</a>';
-    } else {
-        status = 403;
-        body = '<h1>403 Forbidden: Login failed</h1><a href="/">Continue</a>';
-    }
-    sendResponse(params, status, body);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-function getLogoutResultPlain(params) {
-    var body, status;
-    if (sessionGet(params, 'username') === null) {
-        status = 200;
-        body = '200 OK: You have successfully logged out';
-    } else {
-        status = 500;
-        body = '500 Internal Server Error: Logout failed';
-    }
-    sendResponse(params, status, body);
-}
-
-function getLogoutResultJson(params) {
-    var body, status;
-    if (sessionGet(params, 'username') === null) {
-        status = 200;
-        body = '{ "status": 200, "result": "OK", "message": "You have successfully logged out" }';
-    } else {
-        status = 500;
-        body = '{ "status": 500, "result": "Internal Server Error", "message": "Logout failed" }';
-    }
-    sendResponse(params, status, body);
-}
-
-function getLogoutResultHtml(params) {
-    var body, status;
-    if (sessionGet(params, 'usename') === null) {
-        status = 200;
-        body = '<h1>200 OK: You have successfully logged out</h1><a href="/">Continue</a>';
-    } else {
-        status = 500;
-        body = '<h1>500 Internal Server Error: Logout failed</h1><a href="/">Continue</a>';
-    }
-    sendResponse(params, status, body);
-}
-
 function getStyleCss(params) {
     // 365 days
     params.headers['Cache-Control'] = 'max-age=31536000';
@@ -874,30 +692,6 @@ var places_exact = {
             { type: 'application/json', action: getDataResultJson },
             { type: 'text/plain', action: getDataResultPlain },
             { type: 'text/html', action: getDataResultHtml }
-        ],
-    },
-
-    '/login': {
-        'POST': postLogin
-    },
-
-    '/login/result': {
-        'GET': [
-            { type: 'application/json', action: getLoginResultJson },
-            { type: 'text/plain', action: getLoginResultPlain },
-            { type: 'text/html', action: getLoginResultHtml }
-        ],
-    },
-
-    '/logout': {
-        'POST': postLogout
-    },
-
-    '/logout/result': {
-        'GET': [
-            { type: 'application/json', action: getLogoutResultJson },
-            { type: 'text/plain', action: getLogoutResultPlain },
-            { type: 'text/html', action: getLogoutResultHtml }
         ],
     },
 
