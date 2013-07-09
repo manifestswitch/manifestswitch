@@ -385,8 +385,7 @@ function postDataItem(params) {
         }
 
         for (var j = 0, jlen = result.rows.length; j < jlen; ++j) {
-            // NB: this is "==" because one is string the other is buffer
-            if ((result.rows[j].content == uparams.content) &&
+            if ((result.rows[j].content.toString('utf8') === uparams.content) &&
                 (result.rows[j].pkey < contentPkey)) {
                 ds_content_query("DELETE FROM content WHERE pkey=" + contentPkey, [],
                                  deletedDuplicateInsert);
@@ -476,7 +475,7 @@ function getDataItemPlain(params) {
             body = '410: Gone';
         } else {
             status = 200;
-            body = rv.content;
+            body = rv.content.toString('utf8');
         }
         sendResponse(params, status, body);
     }
@@ -494,7 +493,7 @@ function getDataItemJson(params) {
             body = '{ "status": 410, "result": "Gone" }';
         } else {
             status = 200;
-            body = JSON.stringify({ status: 200, result: "OK", content: rv.content.toString() });
+            body = JSON.stringify({ status: 200, result: "OK", content: rv.content.toString('utf8') });
         }
         sendResponse(params, status, body);
     }
@@ -512,7 +511,7 @@ function getDataItemHtml(params) {
             body = '<!DOCTYPE html><html><head></head><body><h1>410: Gone</h1><a href="/data">Continue</a></body></html>';
         } else {
             status = 200;
-            body = '<!DOCTYPE html><html><head></head><body><h1>200: OK</h1><pre>' + htmlEscape(rv.content) + '</pre><a href="/data">Continue</a></body></html>';
+            body = '<!DOCTYPE html><html><head></head><body><h1>200: OK</h1><pre>' + htmlEscape(rv.content.toString('utf8')) + '</pre><a href="/data">Continue</a></body></html>';
         }
         sendResponse(params, status, body);
     }
