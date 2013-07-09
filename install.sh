@@ -20,3 +20,5 @@ openssl gendh >> server.pem
 
 npm install hiredis redis
 
+sudo apt-get install postgresql-server-dev-9.1
+

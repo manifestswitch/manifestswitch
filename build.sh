@@ -5,7 +5,7 @@ printf 'building\n' >&2
 # TODO: js and css resources compression
 
 mkdir -p target
-python tools/jsmacro/jsmacro.py -f src/data-server.js >target/data-server.jsmacro.js
+python tools/jsmacro/jsmacro.py -f src/data-server.js | sed "s/_DS_REFERS_PASS_/`cat var/postgresql/ds_refers_pass.txt`/"  | sed "s/_DS_CONTENT_PASS_/`cat var/postgresql/ds_content_pass.txt`/" >target/data-server.jsmacro.js
 # TODO: don't base64 plain text, just quote the string contents
 python tools/jsmacro/jsmacro.py -f src/ui-server.js | sed "s#_UI_SERVER_JS_#new Buffer('`base64 -w 0 <src/resources/ui-server.js`','base64')#" >target/ui-server.jsmacro.js
 

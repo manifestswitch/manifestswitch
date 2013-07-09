@@ -40,7 +40,7 @@ sessionStart,
 process,
 url,
 sessionGet,
-sendResponse,
+sendesponse,
 htmlEscape,
 async_log,
 http,
@@ -64,38 +64,6 @@ main;
 var data_server_css = '.hash { font-family: monospace; }';
 var data_server_css_gzip = new Buffer('H4sICIuczFECA2RhdGEtc2VydmVyLmNzcwDTy0gszlCoVkjLzyvRTUvMzcyptFLIzc/LLy5ITE61VqjlAgB3ZlLSIgAAAA==', 'base64');
 
-var datadb = [
-    { hash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', content: '', gone: false },
-    { hash: 'caf3af6d893b5cb8eae9a90a3054f370a92130863450e3299d742c7a65329d94', content: 'boo\n', gone: false },
-    { hash: '7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730', content: 'bar\n', gone: true },
-    { hash: 'bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c', content: 'baz\n', gone: false },
-    { hash: 'caf3af6d893b5cb8eae9a90a3054f370a92130863450e3299d742c7a65329d94', content: 'collides boo\n', gone: false },
-    { hash: '5488b4b042ce5dd01bbb7bc3737f55559a6a6ff13379c3f721613833d658601e', content: 'allo allo\n\n~post(e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855)\n', gone: false }
-];
-
-// index on hash -> [datadb[i], ...]
-var hashed_by = {
-    'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855': [datadb[0]],
-    'caf3af6d893b5cb8eae9a90a3054f370a92130863450e3299d742c7a65329d94': [datadb[1], datadb[4]],
-    '7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730': [datadb[2]],
-    'bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c': [datadb[3]],
-    '5488b4b042ce5dd01bbb7bc3737f55559a6a6ff13379c3f721613833d658601e': [datadb[5]]
-};
-
-var refersdb = [
-//    { referrer: 'caf3af6d893b5cb8eae9a90a3054f370a92130863450e3299d742c7a65329d94',
-//      referree: 'bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c' },
-    { referrer: '5488b4b042ce5dd01bbb7bc3737f55559a6a6ff13379c3f721613833d658601e',
-      referree: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' },
-];
-
-// an index on referree -> [referrer, ...]
-var referred_by = {
-    'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855': ['5488b4b042ce5dd01bbb7bc3737f55559a6a6ff13379c3f721613833d658601e']
-};
-
-var needs_referring = [];
-
 ////////////////////////////////////////////////////////////////////////////////
 
 var userdb = [
@@ -106,6 +74,46 @@ var userdb = [
 var by_username = {
     'user': userdb[0]
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+var pg = require('pg').native;
+var ds_refers_conf = "postgres://ds_refers:_DS_REFERS_PASS_@localhost:5432/ds_refers";
+var ds_content_conf = "postgres://ds_content:_DS_CONTENT_PASS_@localhost:5432/ds_content";
+
+function perform_query(conf, query, params, cb) {
+    var done_save;
+
+    function got_query(err, result) {
+        done_save();
+
+        if (err) {
+            cb(err, null);
+            return;
+        }
+        cb(null, result);
+    }
+
+    function got_connect(err, client, done) {
+        done_save = done;
+        if (err) {
+            cb(err, null);
+            return;
+        }
+        client.query(query, params, got_query);
+    }
+    pg.connect(conf, got_connect);
+}
+
+function ds_content_query(query, params, cb) {
+    perform_query(ds_content_conf, query, params, cb);
+}
+
+function ds_refers_query(query, params, cb) {
+    perform_query(ds_refers_conf, query, params, cb);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 // I don't bother SHA'ing the password, it can be cracked easily. The
 // only way to fully prevent cracking would be to use scrypt and DOS
@@ -238,46 +246,36 @@ having to scan through all of them.
 // max page size, just limit it to something of trivial cost to the server.
 var dataListLimit = 32;
 
-function getDataList(params) {
-    var rv = [], first, count, source, disj, conj, rs;
+function getDataList(params, cont) {
+    var rv = [], first, count, rs = null, rsstr = null;
     var query = url.parse(params.request.url, true).query;
 
-    function conjContains(x) { return conj.indexOf(x) !== -1; }
-    function conjContainsHash(x) { return conj.indexOf(x.hash) !== -1; }
+    function gotResults(err, result) {
+        var source = result.rows;
 
-    source = datadb;
+        if (first < 0) {
+            first = Math.max(0, source.length - count);
+            source = source.slice(first);
+        }
+        cont({ list: source.slice(0, count), total: first + source.length });
+    }
 
     if ('references' in query) {
-        rs = query.references;
-        if (!Array.isArray(rs)) {
-            rs = [rs];
+        // TODO: change to "." character since that is not encoded
+        rs = query.references.split(',');
+
+        if (!looksLikeSha(rs[0])) {
+            cont(null);
+            return;
         }
+        rsstr = "'" + rs[0] + "'";
 
-        rs = rs.map(function (rl) { return rl.split(','); });
-
-        conj = null;
-
-        for (var j = 0, len = rs.length; j < len; ++j) {
-            disj = [];
-            for (var k = 0, klen = rs[j].length; k < klen; ++k) {
-                // anything in here.
-                if (rs[j][k] in referred_by) {
-                    disj = disj.concat(referred_by[rs[j][k]]);
-                }
+        for (var i = 1, rlen = rs.length; i < rlen; ++i) {
+            if (!looksLikeSha(rs[i])) {
+                cont(null);
+                return;
             }
-
-            // perform set intersection on conj and disj
-            if (conj === null) {
-                conj = disj;
-            } else {
-                conj = disj.filter(conjContains);
-            }
-        }
-
-        if (conj === null) {
-            source = [];
-        } else {
-            source = source.filter(conjContainsHash);
+            rsstr += ",'" + rs[i] + "'";
         }
     }
 
@@ -285,9 +283,11 @@ function getDataList(params) {
         count = parseInt(query.count, 10);
 
         if (count !== count) {
-            return null;
+            cont(null);
+            return;
         } else if (count < 0) {
-            return null;
+            cont(null);
+            return;
         }
 
         if (count > dataListLimit) {
@@ -302,77 +302,95 @@ function getDataList(params) {
         first = parseInt(query.first, 10);
 
         if (first !== first) {
-            return null;
+            cont(null);
+            return;
         } else if (first < 0) {
-            return null;
+            cont(null);
+            return;
         }
-
     } else {
-        first = Math.max(0, source.length - count);
+        first = -1;
     }
 
-    return { list: source.slice(first, first + count), total: source.length };
+    if (rsstr === null) {
+        if (first < 0) {
+            ds_refers_query("SELECT pkey, sha256 FROM refers_hash ORDER BY pkey", [],
+                            gotResults);
+        } else {
+            ds_refers_query("SELECT pkey, sha256 FROM refers_hash ORDER BY pkey OFFSET $1", [first],
+                            gotResults);
+        }
+    } else {
+        if (first < 0) {
+            ds_refers_query("SELECT rh2.pkey, rh2.sha256 FROM refers as r, refers_hash AS rh1, refers_hash AS rh2 WHERE rh1.sha256 IN (" + rsstr + ") AND rh1.pkey=r.referree AND rh2.pkey=r.referrer ORDER BY r.pkey", [], gotResults);
+        } else {
+            ds_refers_query("SELECT rh2.pkey, rh2.sha256 FROM refers as r, refers_hash AS rh1, refers_hash AS rh2 WHERE rh1.sha256 IN (" + rsstr + ") AND rh1.pkey=r.referree AND rh2.pkey=r.referrer ORDER BY r.pkey OFFSET $1", [first], gotResults);
+        }
+    }
 }
 
 function getDataListPlain(params) {
-    var rv = getDataList(params);
-    var body = '', status;
+    function gotDataListPlain(rv) {
+        var body = '', status;
 
-    if (rv !== null) {
-        for (var i = 0, len = rv.list.length; i < len; ++i) {
-            body += rv.list[i].hash + '\n';
+        if (rv !== null) {
+            for (var i = 0, len = rv.list.length; i < len; ++i) {
+                body += rv.list[i].sha256 + '\n';
+            }
+            status = 200;
+            params.headers['X-Total'] = rv.total;
+        } else {
+            body = '400: Bad Request: Could not parse query parameters.';
+            status = 400;
         }
-        status = 200;
-        params.headers['X-Total'] = rv.total;
-    } else {
-        body = '400: Bad Request: Could not parse query parameters.';
-        status = 400;
+        sendResponse(params, status, body);
     }
-
-    sendResponse(params, status, body);
+    getDataList(params, gotDataListPlain);
 }
 
 function getDataListJson(params) {
-    var rv = getDataList(params);
-    var body = '{ "status": 200, "result": "OK", "items": [\n', status;
+    function gotDataListJson(rv) {
+        var body = '{ "status": 200, "result": "OK", "items": [\n', status;
 
-    if (rv !== null) {
-        for (var i = 0, len = rv.list.length; i < len; ++i) {
-            body += '{ "hash": "' + rv.list[i].hash + '" },\n';
+        if (rv !== null) {
+            for (var i = 0, len = rv.list.length; i < len; ++i) {
+                body += '{ "hash": "' + rv.list[i].sha256 + '" },\n';
+            }
+            body += ']}\n';
+            status = 200;
+            params.headers['X-Total'] = rv.total;
+
+        } else {
+            body = '{ "status": 400, "result": "Bad Request", "code": 1, "message": "Could not parse query parameters." }';
+            status = 400;
         }
-        body += ']}\n';
-        status = 200;
-        params.headers['X-Total'] = rv.total;
-
-    } else {
-        body = '{ "status": 400, "result": "Bad Request", "code": 1, "message": "Could not parse query parameters." }';
-        status = 400;
+        sendResponse(params, status, body);
     }
-
-    sendResponse(params, status, body);
+    getDataList(params, gotDataListJson);
 }
 
 function getDataListHtml(params) {
-    var rv = getDataList(params);
-    var body = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body><ol>\n', status;
+    function gotDataListHtml(rv) {
+        var body = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body><ol>\n', status;
 
-    if (rv !== null) {
-        for (var i = 0, len = rv.list.length; i < len; ++i) {
-            body += '<li><a class="hash" href="/data/' + rv.list[i].hash + '">' + rv.list[i].hash + '</a></li>\n';
+        if (rv !== null) {
+            for (var i = 0, len = rv.list.length; i < len; ++i) {
+                body += '<li><a class="hash" href="/data/' + rv.list[i].sha256 + '">' + rv.list[i].sha256 + '</a></li>\n';
+            }
+
+            body += '</ol>\n';
+            body += '<div><a href="/data/form">Add</a></div>';
+            body += '<div><a href="/">Home</a></div></body></html>';
+            status = 200;
+            params.headers['X-Total'] = rv.total;
+
+        } else {
+            body = '<h1>400: Bad Request: Could not parse query parameters.</h1><a href="/data">Continue</a>';
+            status = 400;
         }
-
-        body += '</ol>\n';
-        body += '<div><a href="/data/form">Add</a></div>';
-        body += '<div><a href="/">Home</a></div></body></html>';
-        status = 200;
-        params.headers['X-Total'] = rv.total;
-
-    } else {
-        body = '<h1>400: Bad Request: Could not parse query parameters.</h1><a href="/data">Continue</a>';
-        status = 400;
+        sendResponse(params, status, body);
     }
-
-    sendResponse(params, status, body);
+    getDataList(params, gotDataListHtml);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -419,60 +437,98 @@ function getDataFormHtml(params) {
 // FIXME: implement upload quotas. Each IP address can only upload a
 // certain amount of data per day, and a max size for each upload.
 function postDataItem(params) {
-    var shasum, uparams, str = '';
+    var shasum, uparams, str = '', hex, references, contentPkey;
+
+    function finis() {
+        redirectTo(params, '/data/result?sha256=' + hex + '&prestate=none');
+    }
+
+    function insertedRefers(err, result) {
+        if (err) {
+            async_log(err);
+        }
+        finis();
+    }
+
+    function insertedRefersHashes(err, result) {
+        if (err) {
+            async_log(err);
+        }
+        if (references.length === 0) {
+            finis();
+            return;
+        }
+        var valuesStr = "('" + result.rows[0].pkey + "','" + result.rows[1].pkey + "')";
+
+        for (var i = 2, len = result.rows.length; i < len; ++i) {
+            valuesStr += ",('" + result.rows[0].pkey + "','" + result.rows[i].pkeys + "')";
+        }
+
+        ds_refers_query("INSERT INTO refers (referrer,referree) VALUES " + valuesStr, [],
+                       insertedRefers);
+    }
+
+    function deletedDuplicateInsert(err, result) {
+        if (err) {
+            async_log(err);
+        }
+        redirectTo(params, '/data/result?sha256=' + hex + '&prestate=same');
+    }
+
+    function writeContinue(err, result) {
+        if (err) {
+            async_log(err);
+        }
+        if ((result === null) || (result.rows.length === 0)) {
+            redirectTo(params, '/data/result?sha256=' + hex + '&prestate=none');
+            return;
+        }
+
+        for (var j = 0, jlen = result.rows.length; j < jlen; ++j) {
+            // NB: this is "==" because one is string the other is buffer
+            if ((result.rows[j].content == uparams.content) &&
+                (result.rows[j].pkey < contentPkey)) {
+                ds_content_query("DELETE FROM content WHERE pkey=" + contentPkey, [],
+                                 deletedDuplicateInsert);
+                return;
+            }
+        }
+
+        var valuesStr = "('" + hex + "')";
+        references = getReferencedHashes(uparams.content);
+
+        for (var i = 0, len = references.length; i < len; ++i) {
+            valuesStr += ",('" + references[i] + "')";
+        }
+
+        ds_refers_query("INSERT INTO refers_hash (sha256) VALUES " + valuesStr + " RETURNING pkey", [],
+                       insertedRefersHashes);
+    }
+
+    function selectContinue(err, result) {
+        if (err) {
+            async_log(err);
+        }
+        if ((result === null) || (result.rows.length === 0)) {
+            redirectTo(params, '/data/result?sha256=' + hex + '&prestate=none');
+            return;
+        }
+        contentPkey = result.rows[0].pkey;
+
+        ds_content_query("SELECT pkey,content FROM content WHERE sha256='" + hex + "'", [], writeContinue);
+    }
 
     function shasumRead() {
         var alreadyHas = null, newdata;
-        var hex = shasum.read(64);
+        hex = shasum.read(64);
 
         if (hex === null) {
             return;
         }
 
-        if (hex in hashed_by) {
-            alreadyHas = hashed_by[hex];
-        }
-
-        if (alreadyHas === null) {
-            newdata = { hash: hex, content: uparams.content, gone: false, refersCached: false };
-            datadb.push(newdata);
-            hashed_by[hex] = [newdata];
-
-            // TODO: this could actually be done in a periodic timer
-            // process, since it doesn't matter if the index is a bit
-            // slow to update.
-            //needs_referring.push(hex);
-
-            var references = getReferencedHashes(uparams.content);
-
-            for (var i = 0, len = references.length; i < len; ++i) {
-                var refhex = references[i];
-
-                if (!(refhex in referred_by)) {
-                    referred_by[refhex] = [hex];
-                    refersdb.push({ referrer: hex, referree: refhex });
-                } else if (referred_by[refhex].indexOf(hex) === -1) {
-                    referred_by[refhex].push(hex);
-                    refersdb.push({ referrer: hex, referree: refhex });
-                }
-            }
-
-            newdata.refersCached = true;
-
-            redirectTo(params, '/data/result?sha256=' + hex + '&prestate=none');
-
-        } else if ((uparams.content.length !== alreadyHas[0].content.length) ||
-                   (uparams.content.substring(0, 32) !== alreadyHas[0].content.substring(0, 32))) {
-
-            // There's a slim possibility this was a hash collision,
-            // which we make quick effort to check against. It is
-            // extremely unlikely that a collision will also have the
-            // same first 32 chars, and quite cheap to check for that
-            redirectTo(params, '/data/result?sha256=' + hex + '&prestate=different');
-
-        } else {
-            redirectTo(params, '/data/result?sha256=' + hex + '&prestate=same');
-        }
+        ds_content_query("INSERT INTO content (sha256, content, gone) VALUES ('" + hex + "', $1, false) RETURNING pkey",
+                         [uparams.content],
+                         selectContinue);
     }
 
     function postDataItemEnd() {
@@ -497,69 +553,70 @@ function postDataItem(params) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-function getDataItem(params) {
-    var hash = params.urlparts.pathname.substring('/data/'.length);
-
-    if (hash in hashed_by) {
-        return hashed_by[hash][0];
+function getDataItem(hash, cb) {
+    function selectContinue(err, result) {
+        if ((result !== null) && (result.rows.length > 0)) {
+            cb(result.rows[0]);
+        }
+        cb(null);
     }
 
-    return null;
+    ds_content_query("SELECT content FROM content WHERE sha256='" + hash + "' LIMIT 1", [], selectContinue);
 }
 
 // TODO: support Range header
 function getDataItemPlain(params) {
-    var status, body;
-    var rv = getDataItem(params);
-
-    if (rv === null) {
-        status = 404;
-        body = '404: Not Found';
-    } else if (rv.gone === true) {
-        status = 410;
-        body = '410: Gone';
-    } else {
-        status = 200;
-        body = rv.content;
+    function gotDataItemPlain(rv) {
+        var status, body;
+        if (rv === null) {
+            status = 404;
+            body = '404: Not Found';
+        } else if (rv.gone === true) {
+            status = 410;
+            body = '410: Gone';
+        } else {
+            status = 200;
+            body = rv.content;
+        }
+        sendResponse(params, status, body);
     }
-
-    sendResponse(params, status, body);
+    getDataItem(params.urlparts.pathname.substring('/data/'.length), gotDataItemPlain);
 }
 
 function getDataItemJson(params) {
-    var status, body;
-    var rv = getDataItem(params);
-
-    if (rv === null) {
-        status = 404;
-        body = '{ "status": 404, "result": "Not Found" }';
-    } else if (rv.gone === true) {
-        status = 410;
-        body = '{ "status": 410, "result": "Gone" }';
-    } else {
-        status = 200;
-        body = JSON.stringify({ status: 200, result: "OK", content: rv.content });
+    function gotDataItemJson(rv) {
+        var status, body;
+        if (rv === null) {
+            status = 404;
+            body = '{ "status": 404, "result": "Not Found" }';
+        } else if (rv.gone === true) {
+            status = 410;
+            body = '{ "status": 410, "result": "Gone" }';
+        } else {
+            status = 200;
+            body = JSON.stringify({ status: 200, result: "OK", content: rv.content });
+        }
+        sendResponse(params, status, body);
     }
-
-    sendResponse(params, status, body);
+    getDataItem(params.urlparts.pathname.substring('/data/'.length), gotDataItemJson);
 }
 
 function getDataItemHtml(params) {
-    var status, body;
-    var rv = getDataItem(params);
-
-    if (rv === null) {
-        status = 404;
-        body = '<!DOCTYPE html><html><head></head><body><h1>404: Not Found</h1><a href="/data">Continue</a></body></html>';
-    } else if (rv.gone === true) {
-        status = 410;
-        body = '<!DOCTYPE html><html><head></head><body><h1>410: Gone</h1><a href="/data">Continue</a></body></html>';
-    } else {
-        status = 200;
-        body = '<!DOCTYPE html><html><head></head><body><h1>200: OK</h1><pre>' + htmlEscape(rv.content) + '</pre><a href="/data">Continue</a></body></html>';
+    function gotDataItemHtml(rv) {
+        var status, body;
+        if (rv === null) {
+            status = 404;
+            body = '<!DOCTYPE html><html><head></head><body><h1>404: Not Found</h1><a href="/data">Continue</a></body></html>';
+        } else if (rv.gone === true) {
+            status = 410;
+            body = '<!DOCTYPE html><html><head></head><body><h1>410: Gone</h1><a href="/data">Continue</a></body></html>';
+        } else {
+            status = 200;
+            body = '<!DOCTYPE html><html><head></head><body><h1>200: OK</h1><pre>' + htmlEscape(rv.content) + '</pre><a href="/data">Continue</a></body></html>';
+        }
+        sendResponse(params, status, body);
     }
-
-    sendResponse(params, status, body);
+    getDataItem(params.urlparts.pathname.substring('/data/'.length), gotDataItemHtml);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -572,106 +629,125 @@ function postLogout(params) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-function getDataResult(params) {
+function getDataResult(params, cont) {
+
+    function gotDataResult(err, result) {
+        // XXX: this is wrong, because it may match a different
+        // content on same hash
+        if ((result !== null) && (result.rows.length > 0)) {
+            cont({ err: 0, hash: query.sha256, prestate: query.prestate });
+            return;
+        }
+        cont({ err: 2, hash: null, prestate: query.prestate });
+    }
+
     var query = url.parse(params.request.url, true).query;
 
     if ((!('sha256' in query)) ||
+        !looksLikeSha(query.sha256) ||
         ((query.prestate !== 'none') &&
          (query.prestate !== 'same') &&
          (query.prestate !== 'different'))) {
-        return { err: 1, hash: null, prestate: null };
+        cont({ err: 1, hash: null, prestate: null });
+        return;
     }
 
     if (query.prestate === 'different') {
-        return { err: 3, hash: null, prestate: query.prestate };
+        cont({ err: 3, hash: null, prestate: query.prestate });
+        return;
     }
 
-    if (query.sha256 in hashed_by) {
-        return { err: 0, hash: query.sha256, prestate: query.prestate };
-    }
-
-    return { err: 2, hash: null, prestate: query.prestate };
+    ds_content_query("SELECT content FROM content WHERE sha256='" + query.sha256 + "'", [], gotDataResult);
 }
 
 function getDataResultPlain(params) {
-    var rv = getDataResult(params), body, status;
+    function gotDataResultPlain(rv) {
+        var body, status;
 
-    if (rv.err === 1) {
-        status = 400;
-        body = '400 Bad Request: sha256 or prestate not supplied\n';
-    } else if (rv.err === 2) {
-        status = 500;
-        body = '500 Internal Server Error: Data not uploaded\n';
-    } else if (rv.err === 3) {
-        status = 409;
-        body = '409 Conflict: There is already another content with that hash. Please try altering the content slightly and try again\n';
-    } else {
-        params.headers.Location = '/data/' + rv.hash;
-
-        if (rv.prestate === 'same') {
-            status = 200;
-            body = '200 OK: Data exists\n/data/' + rv.hash + '\n';
-
+        if (rv.err === 1) {
+            status = 400;
+            body = '400 Bad Request: sha256 or prestate not supplied\n';
+        } else if (rv.err === 2) {
+            status = 500;
+            body = '500 Internal Server Error: Data not uploaded\n';
+        } else if (rv.err === 3) {
+            status = 409;
+            body = '409 Conflict: There is already another content with that hash. Please try altering the content slightly and try again\n';
         } else {
-            status = 201;
-            body = '201 Created: Data successfully added\n/data/' + rv.hash + '\n';
+            params.headers.Location = '/data/' + rv.hash;
+
+            if (rv.prestate === 'same') {
+                status = 200;
+                body = '200 OK: Data exists\n/data/' + rv.hash + '\n';
+
+            } else {
+                status = 201;
+                body = '201 Created: Data successfully added\n/data/' + rv.hash + '\n';
+            }
         }
+        sendResponse(params, status, body);
     }
-    sendResponse(params, status, body);
+    getDataResult(params, gotDataResultPlain);
 }
 
 function getDataResultJson(params) {
-    var rv = getDataResult(params), body, status;
+    function gotDataResultJson(rv) {
+        var body, status;
 
-    if (rv.err === 1) {
-        status = 400;
-        body = '{ "status": 400, "result": "Bad Request", "message": "sha256 not supplied" }';
-    } else if (rv.err === 2) {
-        status = 500;
-        body = '{ "status": 500, "result": "Internal Server Error", "message": "Data not uploaded" }\n';
-    } else if (rv.err === 3) {
-        status = 409;
-        body = '{ "status": 409, "result": "Conflict", "message": "There is already another content with that hash. Please try altering the content slightly and try again" }\n';
-    } else {
-        params.headers.Location = '/data/' + rv.hash;
-
-        if (rv.prestate === 'same') {
-            status = 200;
-            body = '{ "status": 200, "result": "OK", "message": "Data exists", "sha256": "' + rv.hash + '", "uri": "/data/' + rv.hash + '" }';
-
+        if (rv.err === 1) {
+            status = 400;
+            body = '{ "status": 400, "result": "Bad Request", "message": "sha256 not supplied" }';
+        } else if (rv.err === 2) {
+            status = 500;
+            body = '{ "status": 500, "result": "Internal Server Error", "message": "Data not uploaded" }\n';
+        } else if (rv.err === 3) {
+            status = 409;
+            body = '{ "status": 409, "result": "Conflict", "message": "There is already another content with that hash. Please try altering the content slightly and try again" }\n';
         } else {
-            status = 201;
-            body = '{ "status": 201, "result": "Created", "message": "Data successfully added", "sha256": "' + rv.hash + '", "uri": "/data/' + rv.hash + '" }';
+            params.headers.Location = '/data/' + rv.hash;
+
+            if (rv.prestate === 'same') {
+                status = 200;
+                body = '{ "status": 200, "result": "OK", "message": "Data exists", "sha256": "' + rv.hash + '", "uri": "/data/' + rv.hash + '" }';
+
+            } else {
+                status = 201;
+                body = '{ "status": 201, "result": "Created", "message": "Data successfully added", "sha256": "' + rv.hash + '", "uri": "/data/' + rv.hash + '" }';
+            }
         }
+        sendResponse(params, status, body);
     }
-    sendResponse(params, status, body);
+    getDataResult(params, gotDataResultJson);
 }
 
 function getDataResultHtml(params) {
-    var rv = getDataResult(params), body, status;
+    function gotDataResultHtml(rv) {
+        var body, status;
 
-    if (rv.err === 1) {
-        status = 400;
-        body = '<h1>400 Bad Request: sha256 not supplied</h1><a href="/data">Continue</a>';
-    } else if (rv.err === 2) {
-        status = 500;
-        body = '<h1>500 Internal Server Error: Data not uploaded</h1><a href="/data">Continue</a>';
-    } else if (rv.err === 3) {
-        status = 409;
-        body = '<h1>409 Conflict: There is already another content with that hash. Please try altering the content slightly and try again.</h1><a href="/data">Continue</a>';
-    } else {
-        params.headers.Location = '/data/' + rv.hash;
-
-        if (rv.prestate === 'same') {
-            status = 200;
-            body = '<h1>200 OK: Data exists</h1><a href="/data/' + rv.hash + '">' + rv.hash + '</a><div><a href="/data">Continue</a></div>';
-
+        if (rv.err === 1) {
+            status = 400;
+            body = '<h1>400 Bad Request: sha256 not supplied</h1><a href="/data">Continue</a>';
+        } else if (rv.err === 2) {
+            status = 500;
+            body = '<h1>500 Internal Server Error: Data not uploaded</h1><a href="/data">Continue</a>';
+        } else if (rv.err === 3) {
+            status = 409;
+            body = '<h1>409 Conflict: There is already another content with that hash. Please try altering the content slightly and try again.</h1><a href="/data">Continue</a>';
         } else {
-            status = 201;
-            body = '<h1>201 Created: Data successfully added</h1><a href="/data/' + rv.hash + '">' + rv.hash + '</a><div><a href="/data">Continue</a></div>';
+            params.headers.Location = '/data/' + rv.hash;
+
+            if (rv.prestate === 'same') {
+                status = 200;
+                body = '<h1>200 OK: Data exists</h1><a href="/data/' + rv.hash + '">' + rv.hash + '</a><div><a href="/data">Continue</a></div>';
+
+            } else {
+                status = 201;
+                body = '<h1>201 Created: Data successfully added</h1><a href="/data/' + rv.hash + '">' + rv.hash + '</a><div><a href="/data">Continue</a></div>';
+            }
         }
+        sendResponse(params, status, body);
     }
-    sendResponse(params, status, body);
+    getDataResult(params, gotDataResultHtml);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
