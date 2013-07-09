@@ -768,6 +768,8 @@ function getPostsDataListContinue (data) {
     sendResponse(params, status, body);
 }
 
+var dateRegex = /~date\((\d+)\)/;
+
 // If there is an upvote, returns the thing being upvoted
 var upvotes = {
     // 'hex': hex
