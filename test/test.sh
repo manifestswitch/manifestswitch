@@ -27,11 +27,11 @@ fi
 #    exit 1
 #fi
 
-if ! curl --insecure -I 'https://127.0.0.1:8443/post/5488b4b042ce5dd01bbb7bc3737f55559a6a6ff13379c3f721613833d658601e' 2>/dev/null | head -n1 | grep "200 OK" >/dev/null ; then
-    echo "Couldn't get post" >&2
-    rm -f $uc ;
-    exit 1
-fi
+#if ! curl --insecure -I 'https://127.0.0.1:8443/post/5488b4b042ce5dd01bbb7bc3737f55559a6a6ff13379c3f721613833d658601e' 2>/dev/null | head -n1 | grep "200 OK" >/dev/null ; then
+#    echo "Couldn't get post" >&2
+#    rm -f $uc ;
+#    exit 1
+#fi
 
 rm -f $uc ;
 echo "OK" >&2
