@@ -125,7 +125,11 @@ function getDataList(params, cont) {
     var rv = [], first, count, rs = null, rsstr = null;
     var query = url.parse(params.request.url, true).query;
 
-    function gotResults(err, result) {
+    function gotResults(result) {
+        if (result === null) {
+            cont(null);
+            return;
+        }
         var source = result.rows;
 
         if (first < 0) {
@@ -318,16 +322,17 @@ function postDataItem(params) {
         redirectTo(params, '/data/result?sha256=' + hex + '&prestate=none');
     }
 
-    function insertedRefers(err, result) {
-        if (err) {
-            async_log(err);
+    function insertedRefers(result) {
+        if (result === null) {
+            // not much we can do here
         }
         finis();
     }
 
-    function insertedRefersHashes(err, result) {
-        if (err) {
-            async_log(err);
+    function insertedRefersHashes(result) {
+        if (result !== null) {
+            // not much we can do here
+            finis();
         }
         if (references.length === 0) {
             finis();
@@ -343,17 +348,14 @@ function postDataItem(params) {
                        insertedRefers);
     }
 
-    function deletedDuplicateInsert(err, result) {
-        if (err) {
-            async_log(err);
+    function deletedDuplicateInsert(result) {
+        if (result !== null) {
+            // not much we can do
         }
         redirectTo(params, '/data/result?sha256=' + hex + '&prestate=same');
     }
 
-    function writeContinue(err, result) {
-        if (err) {
-            async_log(err);
-        }
+    function writeContinue(result) {
         if ((result === null) || (result.rows.length === 0)) {
             redirectTo(params, '/data/result?sha256=' + hex + '&prestate=none');
             return;
@@ -379,10 +381,7 @@ function postDataItem(params) {
                        insertedRefersHashes);
     }
 
-    function selectContinue(err, result) {
-        if (err) {
-            async_log(err);
-        }
+    function selectContinue(result) {
         if ((result === null) || (result.rows.length === 0)) {
             redirectTo(params, '/data/result?sha256=' + hex + '&prestate=none');
             return;
@@ -431,7 +430,7 @@ function postDataItem(params) {
 ////////////////////////////////////////////////////////////////////////////////
 
 function getDataItem(hash, cb) {
-    function selectContinue(err, result) {
+    function selectContinue(result) {
         if ((result !== null) && (result.rows.length > 0)) {
             cb(result.rows[0]);
             return;
@@ -501,7 +500,7 @@ function getDataItemHtml(params) {
 
 function getDataResult(params, cont) {
 
-    function gotDataResult(err, result) {
+    function gotDataResult(result) {
         // XXX: this is wrong, because it may match a different
         // content on same hash
         if ((result !== null) && (result.rows.length > 0)) {

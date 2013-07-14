@@ -535,11 +535,7 @@ function deleteSession(sessionId, cont) {
 }
 
 function getUsername(params, cont) {
-    function gotUsername(err, result) {
-        if (err !== null) {
-            async_log('getUsername error', err);
-        }
-
+    function gotUsername(result) {
         if ((result !== null) && (result.rows.length === 1)) {
             cont(result.rows[0].username);
         } else {
@@ -564,10 +560,7 @@ function getUsername(params, cont) {
 function authenticate_continue(params, username) {
     var savedResult = null, sessionId;
 
-    function createdSession(err, result) {
-        if (err !== null) {
-            async_log('createSession error', err);
-        }
+    function createdSession(result) {
         params.cookies.s = { value: sessionId };
         redirectTo(params, '/login/result');
     }
@@ -601,11 +594,7 @@ function authenticate_continue(params, username) {
 }
 
 function authenticate(username, password, cont) {
-    function gotPasswords(err, result) {
-        if (err !== null) {
-            async_log('users lookup error', err);
-        }
-
+    function gotPasswords(result) {
         if ((result !== null) && (result.rows.length > 0)) {
             for (var i = 0, len = result.rows.length; i < len; ++i) {
                 if (password === result.rows[i].password) {
@@ -981,9 +970,8 @@ function getDecrypt(params, data, cont) {
         gpg.stdin.end();
     }
 
-    function gotUserKeys(err, result) {
-        if (err !== null) {
-            async_log('error getting user keys', err);
+    function gotUserKeys(result) {
+        if (result === null) {
             cont(null);
             return;
         }
@@ -1475,8 +1463,8 @@ function getUserKey(params) {
 function postGenerateUserKey(params) {
     var username, identifier;
 
-    function insertedKey(err, result) {
-        if (err !== null) {
+    function insertedKey(result) {
+        if (result === null) {
             sendResponse(params, 500, 'Failed to generate a new key');
             return;
         }
@@ -1519,9 +1507,8 @@ function postGenerateUserKey(params) {
 function getKeys(params) {
     var username;
 
-    function gotKeys(err, result) {
-        if (err !== null) {
-            async_log('get keys error', err);
+    function gotKeys(result) {
+        if (result === null) {
             sendResponse(params, 500, 'Could not fetch keys list');
             return;
         }
@@ -1627,8 +1614,8 @@ function postPostInner(params, useSign, useGroup, usePrivate) {
         }
     }
 
-    function gotUserKey(err, result) {
-        if ((err !== null) || (result.rows.length !== 1)) {
+    function gotUserKey(result) {
+        if ((result === null) || (result.rows.length !== 1)) {
             redirectTo(params, '/error/500');
             return;
         }

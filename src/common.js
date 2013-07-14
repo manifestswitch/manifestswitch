@@ -205,11 +205,12 @@ function perform_query(conf, query, params, cb) {
     function got_query(err, result) {
         done_save();
 
-        if (err) {
-            cb(err, null);
+        if (err !== null) {
+            async_log('error in query: ' + query, err);
+            cb(null);
             return;
         }
-        cb(null, result);
+        cb(result);
     }
 
     function got_connect(err, client, done) {
