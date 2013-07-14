@@ -534,7 +534,7 @@ function deleteSession(sessionId, cont) {
                       cont);
 }
 
-function getUsername(params, username, cont) {
+function getUsername(params, cont) {
     function gotUsername(err, result) {
         if (err !== null) {
             async_log('getUsername error', err);
@@ -645,7 +645,7 @@ function getLoginResultPlain(params) {
         }
         sendResponse(params, status, body);
     }
-    getUsername(params, 'username', gotUsername);
+    getUsername(params, gotUsername);
 }
 
 function getLoginResultJson(params) {
@@ -660,7 +660,7 @@ function getLoginResultJson(params) {
         }
         sendResponse(params, status, body);
     }
-    getUsername(params, 'username', gotUsername);
+    getUsername(params, gotUsername);
 }
 
 function getLoginResultHtml(params) {
@@ -675,7 +675,7 @@ function getLoginResultHtml(params) {
         }
         sendResponse(params, status, body);
     }
-    getUsername(params, 'username', gotUsername);
+    getUsername(params, gotUsername);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -702,7 +702,7 @@ function getLogoutResultPlain(params) {
         }
         sendResponse(params, status, body);
     }
-    getUsername(params, 'username', gotUsername);
+    getUsername(params, gotUsername);
 }
 
 function getLogoutResultJson(params) {
@@ -717,7 +717,7 @@ function getLogoutResultJson(params) {
         }
         sendResponse(params, status, body);
     }
-    getUsername(params, 'username', gotUsername);
+    getUsername(params, gotUsername);
 }
 
 function getLogoutResultHtml(params) {
@@ -733,7 +733,7 @@ function getLogoutResultHtml(params) {
         sendResponse(params, status, body);
     }
 
-    getUsername(params, 'username', gotUsername);
+    getUsername(params, gotUsername);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -781,7 +781,7 @@ function getHomePageHtml(params) {
         sendResponse(params, 200, body);
     }
 
-    getUsername(params, 'username', gotUsername);
+    getUsername(params, gotUsername);
 }
 
 /*
@@ -1047,7 +1047,7 @@ function getDecrypt(params, data, cont) {
         return;
     }
 
-    getUsername(params, 'username', gotUsername);
+    getUsername(params, gotUsername);
 }
 
 // If there is a parent, returns it
@@ -1131,7 +1131,7 @@ function postGenerateGpg(params) {
         fs.mkdir('var/gpg/' + gpgDir, 448, madeDir);
     }
 
-    getUsername(params, 'username', gotUsername);
+    getUsername(params, gotUsername);
 }
 
 // This returns the list of posts with at least one upvote signed by someone in our network.
@@ -1285,7 +1285,7 @@ function getDataPostsHtml(params) {
         refreshPeerContent(username, gotPeerContent);
     }
 
-    getUsername(params, 'username', gotUsername);
+    getUsername(params, gotUsername);
 }
 
 function getPostsFormHtml(params) {
@@ -1510,7 +1510,7 @@ function postGenerateUserKey(params) {
             return;
         }
         identifier = uparams.identifier;
-        getUsername(params, 'username', gotUsername);
+        getUsername(params, gotUsername);
     }
 
     getFormData(params, gotFormData);
@@ -1561,7 +1561,7 @@ function getKeys(params) {
 
         fs.exists('var/gpg/' + gpgDir, hasGpgDir);
     }
-    getUsername(params, 'username', gotUsername);
+    getUsername(params, gotUsername);
 }
 
 
@@ -1764,7 +1764,7 @@ function postPostInner(params, useSign, useGroup, usePrivate) {
         }
         getFormData(params, gotPostPost);
     }
-    getUsername(params, 'username', gotUsername);
+    getUsername(params, gotUsername);
 }
 
 function postPost(params) {
