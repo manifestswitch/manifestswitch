@@ -1651,7 +1651,14 @@ function getKeys(params) {
             // FIXME: not actually escaped!
             body += '<li>' + htmlEscape(result.rows[i].identifier) + '</li>';
         }
-        body += '</ul><form method="POST" action="/key/generate"><input type="text" name="identifier"><input type="submit" name"action" value="Generate"></form><a href="/">Home</a>';
+        body += '</ul><form method="POST" action="/key/generate"><input type="text" name="identifier"><input type="submit" name"action" value="Generate"></form></div><div><h2>Networks</h2><ul>';
+
+        for (var i = 0, len = 1; i < len; ++i) {
+            // FIXME: not actually escaped!
+            body += '<li>' + htmlEscape('Tech (public)') + '</li>';
+            body += '<li>' + htmlEscape('Friends (private)') + '</li>';
+        }
+        body += '</ul></div><a href="/">Home</a>';
 
         sendResponse(params, 200, body);
     }
