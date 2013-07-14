@@ -177,6 +177,7 @@ var posted_by = {
 
 var us_users_conf = "postgres://us_users:_US_USERS_PASS_@localhost:5432/us_users";
 var us_sessions_conf = "postgres://us_sessions:_US_SESSIONS_PASS_@localhost:5432/us_sessions";
+var us_keys_conf = "postgres://us_keys:_US_KEYS_PASS_@localhost:5432/us_keys";
 
 function us_users_query(query, params, cb) {
     perform_query(us_users_conf, query, params, cb);
@@ -184,6 +185,10 @@ function us_users_query(query, params, cb) {
 
 function us_sessions_query(query, params, cb) {
     perform_query(us_sessions_conf, query, params, cb);
+}
+
+function us_keys_query(query, params, cb) {
+    perform_query(us_keys_conf, query, params, cb);
 }
 
 
@@ -260,7 +265,10 @@ function getDataList(references, cont) {
 
         var ch = '';
         res.on('readable', function () {
-            ch += res.read();
+            var str = res.read();
+            if (str !== null) {
+                ch += str;
+            }
         });
         res.on('end', function () {
             var ret;
@@ -347,7 +355,10 @@ function getDataItem(hex, cont) {
         }
 
         res.on('readable', function () {
-            ch += res.read();
+            var str = res.read();
+            if (str !== null) {
+                ch += str;
+            }
         });
         res.on('end', function () {
             if ((res.statusCode >= 200) && (res.statusCode <= 299)) {
@@ -864,50 +875,179 @@ function getUpvotedCached(hex) {
     return upvotes[hex];
 }
 
-var ivRegex = /~iv\(([0-9a-zA-Z\/+]{22}==)\)/;
-var cipherRegex = /~cipher\(([^\)]+)\)/;
-// XXX: doesn't check that the output length is a multiple of 4 bytes
-var dataRegex = /~data\(([0-9a-zA-Z\/+]+={0,2})\)/;
+var gpgStart = '-----BEGIN PGP ';
+var pubkeyStart = ':pubkey enc packet:';
+var symkeyStart = ':symkey enc packet:';
 
+/*
+This should attempt the steps of postPost in reverse. Start trying to
+decrypt message using private key, then using one of the shared
+secrets, finally try to verify.
+
+In case of combined encryption and signature, empty content is taken
+to mean "decryption failed", and content with >0 status code to mean
+"verification failed". The case of successfully decrypting the empty
+content, but failing to verify is not supported - this is treated as
+decryption failure.
+
+--batch --list-packets
+
+:pubkey enc packet:
+:symkey enc packet:
+:packet 
+// otherwise empty content
+
+If it is a pubkey enc and we are the recipient and it's signed, we'll also see:
+^:signature packet:
+
+If it's symkey enc then we will have to enumerate our shared keys
+before we hit the right one (or not).
+
+*/
 function getDecrypt(params, data, cont) {
-    var dec = '';
+    var gpgDir, ch = '', hasPubkey = false, verified = null, keys, key, gpg, gpgStatus, decData;
 
-    function decipherEnd() {
-        cont(dec);
+    // TODO: return the key signed with and encrypted to if present.
+
+    function endSignature(code) {
+        // we only set verified true if a signature packet was found
+        if ((verified === false) && (code === 0)) {
+            verified = true;
+        }
+        cont({ data: ch, verified: verified, group: null, pubkey: hasPubkey });
     }
 
-    function decipherRead() {
-        dec += decipher.read();
+    function checkKeyPackets() {
+        if (ch.indexOf('\n:signature packet:') !== -1) {
+            verified = gpgStatus === 0;
+        }
+        cont({ data: decData, verified: verified, group: key.identifier, pubkey: hasPubkey });
     }
 
-    var ivm = data.match(ivRegex);
-    if (ivm === null) {
+    function signatureRead() {
+        var str = gpg.stdout.read();
+        if (str !== null) {
+            ch += str;
+        }
+    }
+
+    function listPacketsRead() {
+        var str = gpg.stdout.read();
+        if (str !== null) {
+            ch += str;
+        }
+    }
+
+    function checkKeyEnd(status) {
+        if (ch === '') {
+            tryUserKeys();
+            return;
+        }
+
+        // if it worked, then have perform --list-packets with that
+        // shared key to see whether there was a signature.
+
+        gpgStatus = status;
+        decdata = ch;
+
+        gpg = child_process.spawn('/usr/bin/gpg',
+                                  ['-q', '--passphrase-fd', '3', '--homedir', 'var/gpg/' + gpgDir, '--batch', '--list-packets'],
+                                  { stdio: ['pipe', 'pipe', 'ignore', 'pipe'] });
+
+        ch = '';
+        gpg.stdout.on('readable', listPacketsRead);
+        gpg.stdout.on('end', checkKeyPackets);
+        gpg.stdio[3].write(key.secret);
+        gpg.stdin.write(data);
+        gpg.stdin.end();
+    }
+
+    function tryUserKeys() {
+        if (keys.length === 0) {
+            cont({ data: ch, verified: verified, group: false, pubkey: hasPubkey });
+            return;
+        }
+
+        key = keys.pop();
+        gpg = child_process.spawn('/usr/bin/gpg',
+                                      ['-q', '--batch', '--passphrase-fd', '3', '--homedir', 'var/gpg/' + gpgDir],
+                                      { stdio: ['pipe', 'pipe', 'ignore', 'pipe'] });
+
+        ch = '';
+        gpg.stdout.on('close', checkKeyEnd);
+        gpg.stdout.on('readable', signatureRead);
+        gpg.stdio[3].write(key.secret);
+        gpg.stdin.write(data);
+        gpg.stdin.end();
+    }
+
+    function gotUserKeys(err, result) {
+        if (err !== null) {
+            async_log('error getting user keys', err);
+            cont(null);
+            return;
+        }
+        keys = result.rows;
+    }
+
+    function listPacketsEnd() {
+        if (ch.substr(0, symkeyStart.length) === symkeyStart) {
+            //loop through the secrets trying each in turn
+            us_keys_query('SELECT identifier,secret FROM secrets WHERE username=$1',
+                          [username],
+                          gotUserKeys);
+            return;
+        }
+
+        if (ch.substr(0, pubkeyStart.length) === pubkeyStart) {
+            if (ch.indexOf('\n:signature packet:') !== -1) {
+                verified = false;
+            }
+            hasPubkey = true;
+            // fall through
+
+            // FIXME BROKEN
+            // The contained message could be Group encrypted
+
+        }
+
+        // see if it's a valid cleartext signature
+        // --verify is not specified because we want the data stripped
+        // of signature tags anway.
+        verified = false;
+        gpg = child_process.spawn('/usr/bin/gpg',
+                                      ['-q', '--homedir', 'var/gpg/' + gpgDir, '--batch'],
+                                      { stdio: ['pipe', 'pipe', 'ignore'] });
+        ch = '';
+        gpg.on('close', endSignature);
+        gpg.stdout.on('readable', signatureRead);
+        gpg.stdin.write(data);
+        gpg.stdin.end();
+    }
+
+    function gotUsername(username) {
+        gpgDir = getGpgDir(username);
+
+        if (gpgDir === null) {
+            cont(null);
+            return;
+        }
+        gpg = child_process.spawn('/usr/bin/gpg',
+                                  ['-q', '--homedir', 'var/gpg/' + gpgDir, '--batch', '--list-packets'],
+                                  { stdio: ['pipe', 'pipe', 'ignore'] });
+
+        gpg.stdout.on('readable', listPacketsRead);
+        gpg.stdout.on('end', listPacketsEnd);
+        gpg.stdin.write(data);
+        gpg.stdin.end();
+    }
+
+    if (data.substr(0, gpgStart.length) !== gpgStart) {
         cont(null);
         return;
     }
-    var cipherm = data.match(cipherRegex);
-    if (cipherm === null) {
-        cont(null);
-        return;
-    }
-    var datam = data.match(dataRegex);
-    if (datam === null) {
-        cont(null);
-        return;
-    }
-    // todo: support other ciphers
-    if (cipherm[1] !== 'aes-256-cbc') {
-        cont(null);
-        return;
-    }
-    var iv = new Buffer(ivm[1], 'base64');
-    var data = new Buffer(datam[1], 'base64');
-    var decipher = crypto.createDecipheriv(cipherm[1], getUserKey(params), iv);
-    decipher.setEncoding('utf8');
-    decipher.on('readable', decipherRead);
-    decipher.on('end', decipherEnd);
-    decipher.write(data);
-    decipher.end();
+
+    getUsername(params, 'username', gotUsername);
 }
 
 // If there is a parent, returns it
@@ -929,6 +1069,69 @@ function getPostParentCached(hex, data) {
 
 var user_posts = {
     // 'user': { 'posthash': set({'childhash1', 'childhash2', ...}), ... }
+}
+
+function getGpgDir(username) {
+    var gpgDir = (new Buffer(username, 'utf8')).toString('base64');
+
+    // TODO: give the username an ID so there is no limit on
+    // username length
+    if (gpgDir.length >= 255) {
+        return null;
+    }
+    return gpgDir;
+}
+
+function postGenerateGpg(params) {
+
+    var gpgDir;
+
+    function gpgClose(code) {
+        if (code !== 0) {
+            async_log('gpg create failed');
+            redirectTo(params, '/error/500');
+            return;
+        }
+        redirectTo(params, '/keys');
+    }
+
+    function madeDir(err) {
+        if (err !== null) {
+            async_log('could not mk gpg dir');
+            redirectTo(params, '/error/500');
+            return;
+        }
+        var gpg = child_process.spawn('/usr/bin/gpg',
+                                      ['-q', '--homedir', 'var/gpg/' + gpgDir, '--batch', '--gen-key'],
+                                      { stdio: ['pipe', 'ignore', 'ignore'] });
+        gpg.on('exit', gpgClose);
+
+        // Could use 4096 bit, but this is not the weakest link of
+        // security, and doing so would use up extra entropy.
+        gpg.stdin.write('Key-Type: RSA\n' +
+                        'Key-Length: 2048\n' +
+                        'Subkey-Type: RSA\n' +
+                        'Subkey-Length: 2048\n' +
+                        'Name-Real: Anonymous\n');
+//                        'Name-Comment: \n' +
+//                        'Name-Email: \n' +
+
+        gpg.stdin.end();
+    }
+
+    function gotUsername(username) {
+        gpgDir = getGpgDir(username);
+
+        if (gpgDir === null) {
+            redirectTo(params, '/error/500');
+            return;
+        }
+
+        // oct 0700 = dec 448
+        fs.mkdir('var/gpg/' + gpgDir, 448, madeDir);
+    }
+
+    getUsername(params, 'username', gotUsername);
 }
 
 // This returns the list of posts with at least one upvote signed by someone in our network.
@@ -995,14 +1198,19 @@ function getDataPostsHtml(params) {
 
     function gotDecrypt(hex, isFinal) {
         return function (decrypt) {
-            if (decrypt === null) {
+
+            // TODO: keep track of which items look like they're
+            // encrypted, bu failed to decrypt. We can try them again
+            // if we get a new key at some point.
+            if ((decrypt === null) ||
+                ((decrypt.group === null) && (decrypt.verified !== true))) {
                 decAndCheck();
                 return;
             }
 
             // check to prevent us following upvotes of upvotes
             if (!isFinal) {
-                var upvoted = getUpvoteFromData(decrypt);
+                var upvoted = getUpvoteFromData(decrypt.data);
 
                 // XXX: currently this means "~upvote()...~post()" will
                 // ignore the post.
@@ -1013,7 +1221,7 @@ function getDataPostsHtml(params) {
                     return;
                 }
             }
-            var post = getPostFromData(decrypt);
+            var post = getPostFromData(decrypt.data);
 
             if (post !== null) {
                 setParent(hex, post);
@@ -1098,7 +1306,7 @@ function getPostsFormHtml(params) {
 }
 
 function gotPostItem(params) {
-    var hash, data, parent;
+    var hash, data, parent, decrypt = null;
 
     function printLiteral() {
         // 5 minutes. Main reason to keep this short is in case
@@ -1107,20 +1315,33 @@ function gotPostItem(params) {
         params.headers['Cache-Control'] = 'max-age=300';
 
         var parentLink = (parent === null) ? '' : '<div><a href="/post/' + parent + '">Parent</a></div>';
+        var verified = '', group = '', pubkey = '';
+        if (decrypt !== null) {
+            if (decrypt.verified === true) {
+                verified = '<span>Verified</span>';
+            }
+            if (decrypt.group !== null) {
+                group = '<span>Group: ' + htmlEscape(decrypt.group) + '</span>';
+            }
+            if (decrypt.pubkey === true) {
+                pubkey = '<span>Private</span>';
+            }
+        }
         var title = '';
-        var body = ('<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body>' + title + '<h2 class="hash">' +
+        var body = ('<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body>' + htmlEscape(title) + '<h2 class="hash">' +
                     hash +
                     '</h1><pre>' +
-                    data.replace(parentsRegex, '') +
-                    '</pre><div>By: Anon</div><form action="/vote" method="POST"><input type="submit" name="vote" value="upvote"></form>' + parentLink + '<div><a href="/posts?parent=' + hash + '">Comments</a><div><a href="/posts/form?parent=' + hash + '">Reply</a></div></div><div></div><script type="text/javascript" src="/script?v=0"></script></body></html>');
+                    htmlEscape(data.replace(parentsRegex, '')) +
+                    '</pre><div>By: Anonymous</div>' + verified + group + pubkey + '<form action="/vote" method="POST"><input type="submit" name="vote" value="upvote"></form>' + parentLink + '<div><a href="/posts?parent=' + hash + '">Comments</a><div><a href="/posts/form?parent=' + hash + '">Reply</a></div></div><div></div><script type="text/javascript" src="/script?v=0"></script></body></html>');
 
         sendResponse(params, 200, body);
     }
 
-    function gotDecrypt(decrypt) {
-        if (decrypt !== null) {
-            data = decrypt;
-            parent = getPostFromData(decrypt);
+    function gotDecrypt(dec) {
+        if (dec !== null) {
+            decrypt = dec;
+            data = dec.data;
+            parent = getPostFromData(dec.data);
         }
         printLiteral();
     }
@@ -1138,12 +1359,7 @@ function gotPostItem(params) {
         // Note we only try decrypting if the current content doesn't
         // show a ~post()
         parent = getPostParentCached(hash, data);
-
-        if (parent === null) {
-            getDecrypt(params, data, gotDecrypt);
-        } else {
-            printLiteral();
-        }
+        getDecrypt(params, data, gotDecrypt);
     };
 
     return gotPostItemLiteral;
@@ -1230,6 +1446,7 @@ function getPostsFormResultHtml(params) {
         sendResponse(params, 400, 'invalid sha <a href="/posts">Back</a>');
         return;
     }
+    // FIXME: check that the data was posted
     if (!query.sha256) {
         sendResponse(params, 500, 'data was not posted <a href="/posts">Back</a>');
         return;
@@ -1254,21 +1471,108 @@ function getUserKey(params) {
     return new Buffer('tTDm6WQHj8dqVH/c73nu+SmDEisT/UqIE5Op2C9IO10=', 'base64');
 }
 
-function generateIv(cont) {
-    function gotBytes(ex, buf) {
-        if (ex) {
-            async_log('error generating IV', ex);
-            cont(null);
+// FIXME: check for existing identifier first!!
+function postGenerateUserKey(params) {
+    var username, identifier;
+
+    function insertedKey(err, result) {
+        if (err !== null) {
+            sendResponse(params, 500, 'Failed to generate a new key');
             return;
         }
-        cont(buf);
+        redirectTo(params, '/keys');
     }
-    crypto.randomBytes(16, gotBytes);
+
+    function gotBytes(err, buf) {
+        if (err !== null) {
+            sendResponse(params, 500, 'Failed to generate a new key');
+            return;
+        }
+
+        us_keys_query("INSERT INTO secrets (username, identifier, secret, modified_date, ignore_new) VALUES ($1, $2, $3, CURRENT_TIMESTAMP, false)",
+                      [username, identifier, '\\x' + buf.toString('hex')],
+                      insertedKey);
+    }
+
+    function gotUsername(u) {
+        username = u;
+        if (username === null) {
+            sendResponse(params, 403, 'You must be logged in to generate a new key');
+            return;
+        }
+
+        crypto.randomBytes(32, gotBytes);
+    }
+
+    function gotFormData(params, uparams) {
+        if (!('identifier' in uparams) || (uparams.identifier === '')) {
+            sendResponse(params, 400, 'Please specify a key identifier');
+            return;
+        }
+        identifier = uparams.identifier;
+        getUsername(params, 'username', gotUsername);
+    }
+
+    getFormData(params, gotFormData);
 }
 
-function gotPostPost(params, query) {
+function getKeys(params) {
+    var username;
 
-    var cipher, shasum, enc = '~cc(04f8996da763b7a969b1028ee3007569eaf3a635486ddab211d512c85b9df8fb)\n';
+    function gotKeys(err, result) {
+        if (err !== null) {
+            async_log('get keys error', err);
+            sendResponse(params, 500, 'Could not fetch keys list');
+            return;
+        }
+        var body = '<p>Fingerprint: FEB9 C9F5 D9D1 76D4 ED6C  C5EA A6F3 D557 <span class="keyid" style="text-decoration: underline;">780D 283E</span></p><ul>';
+        for (var i = 0, len = result.rows.length; i < len; ++i) {
+            // FIXME: not actually escaped!
+            body += '<li>' + htmlEscape(result.rows[i].identifier) + '</li>';
+        }
+        body += '</ul><form method="POST" action="/key/generate"><input type="text" name="identifier"><input type="submit" name"action" value="Generate"></form><a href="/">Home</a>';
+
+        sendResponse(params, 200, body);
+    }
+
+    function hasGpgDir(exists) {
+        if (exists) {
+            us_keys_query('SELECT identifier FROM secrets WHERE username=$1',
+                          [username],
+                          gotKeys)
+        } else {
+            sendResponse(params, 200, '<form method="POST" action="/gpg/generate"><input type="submit" name"action" value="Generate GPG keys"></form>');
+        }
+    }
+
+    function gotUsername(u) {
+        username = u;
+        if (username === null) {
+            sendResponse(params, 403, 'You must be logged in to generate a new key');
+            return;
+        }
+
+        var gpgDir = getGpgDir(username);
+
+        if (gpgDir === null) {
+            sendResponse(params, 500, 'Your username is too long, please register a shorter one');
+            return;
+        }
+
+        fs.exists('var/gpg/' + gpgDir, hasGpgDir);
+    }
+    getUsername(params, 'username', gotUsername);
+}
+
+
+// TODO: limit upload size to something smallish like 128K. This is
+// useful at this level to stop uploads hogging connections and to
+// reduce the amount of data being SHA'd.
+function postPostInner(params, useSign, useGroup, usePrivate) {
+    var hasSign = false, hasGroup = false, hasPrivate = false;
+    var identifier = null, keyid = null, gpgDir = null;
+    var cipher, shasum, username, enc = '';
+    var thepost = '';
 
     function shasumRead() {
         var digest = shasum.read(64);
@@ -1286,54 +1590,185 @@ function gotPostPost(params, query) {
             headers: { Accept: 'text/plain' }
         };
 
-        var payload = 'content=' + encodeURIComponent(enc);
+        var payload = 'content=' + encodeURIComponent(thepost);
         followUntilSuccess(params, 'https:', options, payload, postFinished(digest), 0);
     }
 
-    function cipherEnd() {
-        enc += ')\n';
+    function finishPost() {
         shasum = crypto.createHash('sha256');
         shasum.setEncoding('hex');
         shasum.on('readable', shasumRead);
-        shasum.write(enc);
+        shasum.write(thepost);
         shasum.end();
     }
 
+    function finishSign() {
+        thepost = enc;
+        hasSign = true;
+        continuePost();
+    }
+
+    function finishGroup() {
+        thepost = enc;
+        hasGroup = true;
+        continuePost();
+    }
+
+    function finishPrivate() {
+        thepost = enc;
+        hasPrivate = true;
+        continuePost();
+    }
+
     function cipherRead() {
-        enc += cipher.read();
+        var str = cipher.stdout.read();
+        if (str !== null) {
+            enc += str;
+        }
     }
 
-    function gotIv(iv) {
-        var thepost = '~post(' + query.parent + ')\n~date(' + Date.now() + ')\n' + query.content;
-        var algo = 'aes-256-cbc';
-        enc += '~iv(' + iv.toString('base64') + ')\n~cipher(' + algo + ')\n~data(';
-        cipher = crypto.createCipheriv(algo, getUserKey(params), iv);
-        cipher.setEncoding('base64');
-        cipher.on('readable', cipherRead);
-        cipher.on('end', cipherEnd);
-        cipher.write(thepost);
-        cipher.end();
+    function gotUserKey(err, result) {
+        if ((err !== null) || (result.rows.length !== 1)) {
+            redirectTo(params, '/error/500');
+            return;
+        }
+        var key = result.rows[0].secret;
+
+        var gpgDir = getGpgDir(username);
+        if (gpgDir === null) {
+            redirectTo(params, '/error/500');
+            return;
+        }
+
+        /*
+          --s2k-count 1024
+          Relying on a high s2k-count for security is not good, only
+          scrypt would give any real protection.
+          Instead security is maintained by the use of 256 bit random
+          keys.
+          In theory --s2k-mode 0 would be safe, but I've left it at 3
+          with a small s2k-count instead.
+
+          --s2k-digest-algo SHA512
+          SHA-1 output is 160 bits, which is too small.
+          Using SHA-512 instead of SHA-256 because why not?
+
+          --cipher-algo AES256
+          Generally the most recommended cipher to use.
+         */
+        var args = ['-qac', '--batch', '--no-emit-version', '--passphrase-fd', '3', '--homedir', 'var/gpg/' + gpgDir,
+                    '--s2k-digest-algo', 'SHA512', '--s2k-count', '1024', '--cipher-algo', 'AES256'];
+        if (useSign) {
+            args.push('-s');
+        }
+        cipher = child_process.spawn('/usr/bin/gpg', args,
+                                     { stdio: ['pipe', 'pipe', 'ignore', 'pipe'] });
+
+        enc = '';
+        cipher.stdout.on('readable', cipherRead);
+        cipher.stdout.on('end', finishGroup);
+        cipher.stdio[3].write(key);
+        cipher.stdin.write(thepost);
+        cipher.stdin.end();
     }
 
-    if (!('parent' in query) || !looksLikeSha(query.parent)) {
-        // TODO: prettier error handling
-        redirectTo(params, '/error/400');
-        return;
-    }
-    generateIv(gotIv);
-}
+    function continuePost() {
+        if (useSign && !useGroup && !usePrivate && !hasSign) {
+            cipher = child_process.spawn('/usr/bin/gpg',
+                                         ['-qa', '--clearsign', '--no-emit-version', '--homedir', 'var/gpg/' + gpgDir],
+                                         { stdio: ['pipe', 'pipe', 'ignore'] });
+            enc = '';
+            cipher.stdout.on('readable', cipherRead);
+            cipher.stdout.on('end', finishSign);
+            cipher.stdin.write(thepost);
+            cipher.stdin.end();
+            return;
+        }
 
-// TODO: limit upload size to something smallish like 128K. This is
-// useful at this level to stop uploads hogging connections and to
-// reduce the amount of data being SHA'd.
-function postPost(params) {
-    function gotUsername(username) {
+        if (useGroup && !hasGroup) {
+            us_keys_query('SELECT secret FROM secrets WHERE username=$1 AND identifier=$2',
+                          [username, identifier],
+                          gotUserKey);
+            return;
+        }
+
+        if (usePrivate && !hasPrivate) {
+            var args = ['-qae', '--no-emit-version', '--throw-keyids', '--homedir', 'var/gpg/' + gpgDir, '-R', ];
+            if (useSign && !useGroup) {
+                args.push('-s');
+            }
+            cipher = child_process.spawn('/usr/bin/gpg', args, { stdio: ['pipe', 'pipe', 'ignore'] });
+            enc = '';
+            cipher.stdout.on('readable', cipherRead);
+            cipher.stdout.on('end', finishPrivate);
+            cipher.stdin.write(thepost);
+            cipher.stdin.end();
+            return;
+        }
+
+        finishPost();
+    }
+
+    /*
+      Valid combinations
+      s g p
+            - public, unsigned, only useful if the document is self-authenticating
+          X - only useful if document is self-authenticating and needs privacy
+        X   - anyone in group could have written it
+        X X - like private, but authenticated as group
+      X     - public, signed
+      X   X - private and signed by us
+      X X   - signed by us, readable by rest of group
+      X X X - signed by us, and the group, private (why not just use 6?)
+     */
+
+    function gotPostPost(params, query) {
+        if (!('parent' in query) || !looksLikeSha(query.parent)) {
+            // TODO: prettier error handling
+            redirectTo(params, '/error/400');
+            return;
+        }
+
+        if (usePrivate) {
+            if (!('keyid' in query)) {
+                sendResponse(params, 400, 'Please specify key id for the private message');
+                return;
+            }
+            keyid = query.keyid;
+        }
+
+        if (useGroup) {
+            if (!('identifier' in query)) {
+                sendResponse(params, 400, 'Please specify key identifier for group post');
+                return;
+            }
+            identifier = query.identifier;
+        }
+
+        gpgDir = getGpgDir(username);
+        if (gpgDir === null) {
+            redirectTo(params, '/error/500');
+            return;
+        }
+
+        thepost = '~post(' + query.parent + ')\n~date(' + Date.now() + ')\n';
+        thepost += '~cc(04f8996da763b7a969b1028ee3007569eaf3a635486ddab211d512c85b9df8fb)\n';
+        thepost +=  query.content;
+        continuePost();
+    }
+
+    function gotUsername(u) {
+        username = u;
         if (username === null) {
             sendResponse(params, 403, 'You must be logged in to make a post <a href="/posts">Posts</a>');
         }
         getFormData(params, gotPostPost);
     }
     getUsername(params, 'username', gotUsername);
+}
+
+function postPost(params) {
+    postPostInner(params, true, false, false);
 }
 
 function getFaviconIco(params) {
@@ -1396,6 +1831,20 @@ var places_exact = {
     '/posts/form/result': {
         'GET': [
             { type: 'text/html', action: getPostsFormResultHtml }
+        ]
+    },
+
+    '/key/generate': {
+        'POST': postGenerateUserKey
+    },
+
+    '/gpg/generate': {
+        'POST': postGenerateGpg
+    },
+
+    '/keys': {
+        'GET': [
+            { type: 'text/html', action: getKeys }
         ]
     },
 
