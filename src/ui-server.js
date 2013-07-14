@@ -1089,6 +1089,9 @@ var user_posts = {
 }
 
 function getGpgDir(username) {
+    if (username === null) {
+        return null;
+    }
     var gpgDir = (new Buffer(username, 'utf8')).toString('base64');
 
     // TODO: give the username an ID so there is no limit on
