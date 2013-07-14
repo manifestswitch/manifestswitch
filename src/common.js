@@ -348,7 +348,10 @@ function getFormData(params, cont) {
     }
 
     function postDataRead() {
-        str += params.request.read();
+        var s = params.request.read();
+        if (s !== null) {
+            str += s;
+        }
     }
 
     params.request.setEncoding('utf8');

@@ -417,7 +417,10 @@ function postDataItem(params) {
     }
 
     function postDataItemData() {
-        str += params.request.read();
+        var s = params.request.read();
+        if (s !== null) {
+            str += s;
+        }
     }
 
     params.request.setEncoding('utf8');
