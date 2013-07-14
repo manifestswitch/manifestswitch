@@ -226,9 +226,22 @@ function perform_query(conf, query, params, cb) {
 ////////////////////////////////////////////////////////////////////////////////
 /// HTML output
 
+function replaceEntities(chr) {
+    if (chr === '&') {
+        return '&amp;';
+    }
+    if (chr === '<') {
+        return '&lt;';
+    }
+    if (chr === '>') {
+        return '&gt;';
+    }
+    return chr;
+}
+
 function htmlEscape(s) {
     // FIXME: do the escaping!
-    return s;
+    return s.replace(/[&<>]/g, replaceEntities);
 }
 
 function htmlQuote(s) {
