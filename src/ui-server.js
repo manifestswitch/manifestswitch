@@ -867,6 +867,8 @@ function getUpvotedCached(hex) {
 var gpgStart = '-----BEGIN PGP ';
 var pubkeyStart = ':pubkey enc packet:';
 var symkeyStart = ':symkey enc packet:';
+var signatureRegex = /\n:signature packet:.*keyid ([0-9A-F]{16})\n/;
+var sigMadeRegex = /gpg: Signature made .* using .* key ID ([0-9A-F]{8})\n/;
 
 /*
 This should attempt the steps of postPost in reverse. Start trying to
@@ -894,29 +896,48 @@ before we hit the right one (or not).
 
 */
 function getDecrypt(params, data, cont) {
-    var gpgDir, ch = '', hasPubkey = false, verified = null, keys, key, gpg, gpgStatus, decData;
+    var gpgDir, ch = '', hasPubkey = false, verified = null, signkey = null, keys, key, gpg, gpgStatus, decData, sigRes = '';
 
     // TODO: return the key signed with and encrypted to if present.
+
+    // NB: "signkey" can be 8 or 16 chars if present.
 
     function endSignature(code) {
         // we only set verified true if a signature packet was found
         if ((verified === false) && (code === 0)) {
             verified = true;
         }
-        cont({ data: ch, verified: verified, group: null, pubkey: hasPubkey });
+
+        if (sigRes !== '') {
+            var m = sigMadeRegex.exec(sigRes);
+            if (m !== null) {
+                signkey = m[1];
+            }
+        }
+
+        cont({ data: ch, verified: verified, group: null, pubkey: hasPubkey, signkey: signkey });
     }
 
     function checkKeyPackets() {
-        if (ch.indexOf('\n:signature packet:') !== -1) {
+        var m = signatureRegex.exec(ch);
+        if (m !== null) {
+            signkey = m[1];
             verified = gpgStatus === 0;
         }
-        cont({ data: decData, verified: verified, group: key.identifier, pubkey: hasPubkey });
+        cont({ data: decData, verified: verified, group: key.identifier, pubkey: hasPubkey, signkey: signkey });
     }
 
     function signatureRead() {
         var str = gpg.stdout.read();
         if (str !== null) {
             ch += str;
+        }
+    }
+
+    function signatureResultRead() {
+        var str = gpg.stderr.read();
+        if (str !== null) {
+            sigRes += str;
         }
     }
 
@@ -953,7 +974,7 @@ function getDecrypt(params, data, cont) {
 
     function tryUserKeys() {
         if (keys.length === 0) {
-            cont({ data: ch, verified: verified, group: false, pubkey: hasPubkey });
+            cont({ data: ch, verified: verified, group: false, pubkey: hasPubkey, signkey: signkey });
             return;
         }
 
@@ -988,9 +1009,12 @@ function getDecrypt(params, data, cont) {
         }
 
         if (ch.substr(0, pubkeyStart.length) === pubkeyStart) {
-            if (ch.indexOf('\n:signature packet:') !== -1) {
+            var m = signatureRegex.exec(ch);
+            if (m !== null) {
+                signkey = m[1];
                 verified = false;
             }
+
             hasPubkey = true;
             // fall through
 
@@ -999,16 +1023,21 @@ function getDecrypt(params, data, cont) {
 
         }
 
+        // FIXME: clearsign list-packets doesn't show us the keyid.
+        // Is there any choice other than parse the stderr log?
+
         // see if it's a valid cleartext signature
         // --verify is not specified because we want the data stripped
         // of signature tags anway.
         verified = false;
         gpg = child_process.spawn('/usr/bin/gpg',
                                       ['-q', '--homedir', 'var/gpg/' + gpgDir, '--batch'],
-                                      { stdio: ['pipe', 'pipe', 'ignore'] });
+                                      { stdio: ['pipe', 'pipe', 'pipe'] });
         ch = '';
+        sigRes = '';
         gpg.on('close', endSignature);
         gpg.stdout.on('readable', signatureRead);
+        gpg.stderr.on('readable', signatureResultRead);
         gpg.stdin.write(data);
         gpg.stdin.end();
     }
