@@ -1537,15 +1537,116 @@ function postGenerateUserKey(params) {
     getFormData(params, gotFormData);
 }
 
-function getKeys(params) {
-    var username;
+// Assume that ours is the only Ultimately trusted key
+var pubKeyRegex = /\npub:u:2048:1:([0-9A-F]{16})/;
 
-    function gotKeys(result) {
-        if (result === null) {
-            sendResponse(params, 500, 'Could not fetch keys list');
+function getPublicKeyId(username, cont) {
+    var gpg, data = '';
+
+    function gpgRead() {
+        var str = gpg.stdout.read();
+        if (str !== null) {
+            data += str;
+        }
+    }
+
+    function gotListKeys() {
+        var m = pubKeyRegex.exec(data);
+        if (m === null) {
+            async_log('gpg output had no public key!');
+            cont(null);
             return;
         }
-        var body = '<p>Fingerprint: FEB9 C9F5 D9D1 76D4 ED6C  C5EA A6F3 D557 <span class="keyid" style="text-decoration: underline;">780D 283E</span></p><ul>';
+
+        cont(m[1]);
+    }
+
+    var gpgDir = getGpgDir(username);
+    if (gpgDir === null) {
+        return;
+    }
+
+    gpg = child_process.spawn('/usr/bin/gpg',
+                              ['--homedir', 'var/gpg/' + gpgDir, '--list-keys', '--with-colons'],
+                              { stdio: ['ignore', 'pipe', 'ignore'] });
+    gpg.stdout.on('readable', gpgRead);
+    gpg.on('close', gotListKeys);
+}
+
+function getPublicKeyHtml(params) {
+
+    var gpg, gpgDir, data = '';
+
+    function gotPubKey(status) {
+        if (status !== 0) {
+            async_log('error exporting public key', status);
+            sendResponse(params, 500, 'error getting public key');
+            return;
+        }
+        sendResponse(params, 200, '<!DOCTYPE html><html><head></head><body><pre>' + htmlEscape(data) + '</pre></body></html>');
+    }
+
+    function gpgRead() {
+        var str = gpg.stdout.read();
+        if (str !== null) {
+            data += str;
+        }
+    }
+
+    function gotPublicKeyId(pubkey) {
+        if (pubkey === null) {
+            async_log('gpg output had no public key!');
+            sendResponse(params, 500, 'Could not retrieve public key');
+            return;
+        }
+
+        data = '';
+        gpg = child_process.spawn('/usr/bin/gpg',
+                                  ['-qa', '--homedir', 'var/gpg/' + gpgDir, '--no-emit-version', '--export', pubkey],
+                                  { stdio: ['ignore', 'pipe', 'ignore'] });
+        gpg.stdout.on('readable', gpgRead);
+        gpg.on('close', gotPubKey);
+
+    }
+
+    function gotUsername(username) {
+        gpgDir = getGpgDir(username);
+        if (gpgDir === null) {
+            return;
+        }
+
+        getPublicKeyId(username, gotPublicKeyId);
+    }
+    getUsername(params, gotUsername);
+}
+
+function formatPubkeyId(pubkey) {
+    var rv;
+    var len = pubkey.length;
+    if (len >= 8) {
+        rv = pubkey.substring(0, len - 8) + ' <span class="keyid" style="font-weight: bold;">' + pubkey.substring(len - 8, len) + '</span>';
+    } else {
+        rv = pubkey;
+    }
+    return '<span style="hash">' + rv + '</span>';
+}
+
+function getKeys(params) {
+    var username, result;
+
+    function gotPublicKeyId(pubkey) {
+        var pubkeyStr = '';
+        if (pubkeyStr !== null) {
+            pubkeyStr = '<p>Your Key ID: <a href="/keys/pubkey">' + formatPubkeyId(pubkey) + '</a></p>';
+        }
+        var body = pubkeyStr + '<div><h2>Keys</h2><ul>';
+
+        for (var i = 0, len = 1; i < len; ++i) {
+            // FIXME: not actually escaped!
+            body += '<li>' +  'Anony1' + ' <span title="FEB9 C9F5 D9D1 76D4 ED6C  C5EA A6F3 D557 780D 283E">(?)</span></li>';
+        }
+        body += '</ul><form method="POST" action="/key/generate"><div><input type="text" name="alias"></div><div><textarea name="pubkey"></textarea></div><input type="submit" name"action" value="Import"></form><div><h2>Groups</h2><ul>';
+
         for (var i = 0, len = result.rows.length; i < len; ++i) {
             // FIXME: not actually escaped!
             body += '<li>' + htmlEscape(result.rows[i].identifier) + '</li>';
@@ -1553,6 +1654,16 @@ function getKeys(params) {
         body += '</ul><form method="POST" action="/key/generate"><input type="text" name="identifier"><input type="submit" name"action" value="Generate"></form><a href="/">Home</a>';
 
         sendResponse(params, 200, body);
+    }
+
+    function gotKeys(r) {
+        result = r;
+        if (result === null) {
+            sendResponse(params, 500, 'Could not fetch keys list');
+            return;
+        }
+
+        getPublicKeyId(username, gotPublicKeyId);
     }
 
     function hasGpgDir(exists) {
@@ -1865,6 +1976,12 @@ var places_exact = {
     '/keys': {
         'GET': [
             { type: 'text/html', action: getKeys }
+        ]
+    },
+
+    '/keys/pubkey': {
+        'GET': [
+            { type: 'text/html', action: getPublicKeyHtml }
         ]
     },
 
