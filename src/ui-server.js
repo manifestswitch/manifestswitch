@@ -1492,10 +1492,6 @@ function postFinished(hex) {
     };
 }
 
-function getUserKey(params) {
-    return new Buffer('tTDm6WQHj8dqVH/c73nu+SmDEisT/UqIE5Op2C9IO10=', 'base64');
-}
-
 // FIXME: check for existing identifier first!!
 function postGenerateUserKey(params) {
     var username, identifier;
