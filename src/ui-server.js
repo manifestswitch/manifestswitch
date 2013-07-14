@@ -1332,10 +1332,13 @@ function gotPostItem(params) {
         params.headers['Cache-Control'] = 'max-age=300';
 
         var parentLink = (parent === null) ? '' : '<div><a href="/post/' + parent + '">Parent</a></div>';
-        var verified = '', group = '', pubkey = '';
+        var verified = '<span>(Unverified)</span>', group = '', pubkey = '', by = 'Anonymous';
         if (decrypt !== null) {
             if (decrypt.verified === true) {
-                verified = '<span>Verified</span>';
+                verified = '<span>(Verified)</span>';
+            }
+            if (decrypt.signkey !== null) {
+                by = htmlEscape(decrypt.signkey);
             }
             if (decrypt.group !== null) {
                 group = '<span>Group: ' + htmlEscape(decrypt.group) + '</span>';
@@ -1349,7 +1352,7 @@ function gotPostItem(params) {
                     hash +
                     '</h1><pre>' +
                     htmlEscape(data.replace(parentsRegex, '')) +
-                    '</pre><div>By: Anonymous</div>' + verified + group + pubkey + '<form action="/vote" method="POST"><input type="submit" name="vote" value="upvote"></form>' + parentLink + '<div><a href="/posts?parent=' + hash + '">Comments</a><div><a href="/posts/form?parent=' + hash + '">Reply</a></div></div><div></div><script type="text/javascript" src="/script?v=0"></script></body></html>');
+                    '</pre><div>By: ' + by + ' ' + verified + '</div>' + group + pubkey + '<form action="/vote" method="POST"><input type="submit" name="vote" value="upvote"></form>' + parentLink + '<div><a href="/posts?parent=' + hash + '">Comments</a><div><a href="/posts/form?parent=' + hash + '">Reply</a></div></div><div></div><script type="text/javascript" src="/script?v=0"></script></body></html>');
 
         sendResponse(params, 200, body);
     }
