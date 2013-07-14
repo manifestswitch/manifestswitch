@@ -1130,8 +1130,10 @@ function postGenerateGpg(params) {
         // security, and doing so would use up extra entropy.
         gpg.stdin.write('Key-Type: RSA\n' +
                         'Key-Length: 2048\n' +
+                        'Key-Usage: sign\n' +
                         'Subkey-Type: RSA\n' +
                         'Subkey-Length: 2048\n' +
+                        'Subkey-Usage: encrypt\n' +
                         'Name-Real: Anonymous\n');
 //                        'Name-Comment: \n' +
 //                        'Name-Email: \n' +
