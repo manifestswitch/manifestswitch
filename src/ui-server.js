@@ -1642,19 +1642,16 @@ function getKeys(params) {
         var body = pubkeyStr + '<div><h2>Keys</h2><ul>';
 
         for (var i = 0, len = 1; i < len; ++i) {
-            // FIXME: not actually escaped!
             body += '<li>' +  'Anony1' + ' <span title="FEB9 C9F5 D9D1 76D4 ED6C  C5EA A6F3 D557 780D 283E">(?)</span></li>';
         }
         body += '</ul><form method="POST" action="/key/generate"><div><input type="text" name="alias"></div><div><textarea name="pubkey"></textarea></div><input type="submit" name"action" value="Import"></form><div><h2>Groups</h2><ul>';
 
         for (var i = 0, len = result.rows.length; i < len; ++i) {
-            // FIXME: not actually escaped!
             body += '<li>' + htmlEscape(result.rows[i].identifier) + '</li>';
         }
         body += '</ul><form method="POST" action="/key/generate"><input type="text" name="identifier"><input type="submit" name"action" value="Generate"></form></div><div><h2>Networks</h2><ul>';
 
         for (var i = 0, len = 1; i < len; ++i) {
-            // FIXME: not actually escaped!
             body += '<li>' + htmlEscape('Tech (public)') + '</li>';
             body += '<li>' + htmlEscape('Friends (private)') + '</li>';
         }
