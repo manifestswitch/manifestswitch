@@ -336,7 +336,7 @@ function postDataItem(params) {
         var valuesStr = "('" + result.rows[0].pkey + "','" + result.rows[1].pkey + "')";
 
         for (var i = 2, len = result.rows.length; i < len; ++i) {
-            valuesStr += ",('" + result.rows[0].pkey + "','" + result.rows[i].pkeys + "')";
+            valuesStr += ",('" + result.rows[0].pkey + "','" + result.rows[i].pkey + "')";
         }
 
         ds_refers_query("INSERT INTO refers (referrer,referree) VALUES " + valuesStr, [],
