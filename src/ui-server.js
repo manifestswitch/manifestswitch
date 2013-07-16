@@ -1731,7 +1731,7 @@ function formatPubkeyId(pubkey) {
     var rv;
     var len = pubkey.length;
     if (len >= 8) {
-        rv = pubkey.substring(0, len - 8) + ' <span class="keyid" style="font-weight: bold;">' + pubkey.substring(len - 8, len) + '</span>';
+        rv = pubkey.substring(len - 8, len);
     } else {
         rv = pubkey;
     }
