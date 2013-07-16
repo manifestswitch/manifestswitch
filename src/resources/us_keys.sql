@@ -7,7 +7,10 @@ CREATE TABLE secrets (
        secret bytea, -- NOT NULL
        modified_date timestamp, -- INDEX;
        -- eg. if someone compromised the key and spams using it
-       ignore_new boolean -- NOT NULL
+       ignore_new boolean, -- NOT NULL
+       write_token text, -- NOT NULL
+       read_token text, -- NOT NULL
+       key_id text -- NOT NULL
        -- UNIQUE(username, identifier)
 );
 CREATE INDEX secrets_pkey ON secrets (pkey);

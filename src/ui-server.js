@@ -1601,7 +1601,7 @@ function postFinished(hex) {
 
 // FIXME: check for existing identifier first!!
 function postGenerateUserKey(params) {
-    var username, identifier;
+    var username, identifier, shasum, hashparts = [], wtoken, secret;
 
     function insertedKey(result) {
         if (result === null) {
@@ -1611,15 +1611,59 @@ function postGenerateUserKey(params) {
         redirectTo(params, '/keys');
     }
 
+    function shasumRead() {
+        var buf = shasum.read();
+        if (buf !== null) {
+            hashparts.push(buf);
+        }
+    }
+
+    function readShasumEnd() {
+        var rtokenbuf = Buffer.concat(hashparts);
+        var rtoken = rtokenbuf.toString('base64');
+        var rtokenkeyid = rtokenbuf.toString('hex').substr(64 - 8).toUpperCase();
+
+        us_keys_query("INSERT INTO secrets (username, identifier, secret, modified_date, ignore_new, write_token, read_token, key_id) VALUES ($1, $2, $3, CURRENT_TIMESTAMP, false, $4, $5, $6)",
+                      [username, identifier, '\\x' + secret.toString('hex'), wtoken, rtoken, rtokenkeyid],
+                      insertedKey);
+    }
+
+    function shasumEnd() {
+        // take the low 144 bits as our Write token
+        wtoken = Buffer.concat(hashparts).slice(64 - 18).toString('base64');
+        // now derive the Read token from the Write token
+
+        hashparts = []
+        shasum = crypto.createHash('sha256');
+        shasum.on('readable', shasumRead);
+        shasum.on('end', readShasumEnd);
+        if (wtoken !== '') {
+            shasum.write(wtoken);
+        }
+        shasum.end();
+    }
+
     function gotBytes(err, buf) {
+        secret = buf;
         if (err !== null) {
             sendResponse(params, 500, 'Failed to generate a new key');
             return;
         }
 
-        us_keys_query("INSERT INTO secrets (username, identifier, secret, modified_date, ignore_new) VALUES ($1, $2, $3, CURRENT_TIMESTAMP, false)",
-                      [username, identifier, '\\x' + buf.toString('hex')],
-                      insertedKey);
+        // First, do SHA512 of the secret,
+        // take the low 144 bits as base64 - this is the Write key.
+        // take the sha256 of this to get the Read key.
+        // The low 32 bits as hex are the "key id", though any amount
+        // of the Read key could be used.
+
+        shasum = crypto.createHash('sha512');
+        shasum.on('readable', shasumRead);
+        shasum.on('end', shasumEnd);
+        // seems like a bug, can't hash the empty string
+        if (buf.length > 0) {
+            shasum.write(buf);
+        }
+        shasum.end();
     }
 
     function gotUsername(u) {
