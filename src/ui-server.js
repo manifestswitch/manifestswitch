@@ -176,11 +176,16 @@ var posted_by = {
 };
 
 var us_users_conf = "postgres://us_users:_US_USERS_PASS_@localhost:5432/us_users";
+var us_pubkeyalias_conf = us_users_conf;
 var us_sessions_conf = "postgres://us_sessions:_US_SESSIONS_PASS_@localhost:5432/us_sessions";
 var us_keys_conf = "postgres://us_keys:_US_KEYS_PASS_@localhost:5432/us_keys";
 
 function us_users_query(query, params, cb) {
     perform_query(us_users_conf, query, params, cb);
+}
+
+function us_pubkey_alias_query(query, params, cb) {
+    perform_query(us_pubkeyalias_conf, query, params, cb);
 }
 
 function us_sessions_query(query, params, cb) {
@@ -1189,6 +1194,75 @@ function postGenerateGpg(params) {
     getUsername(params, gotUsername);
 }
 
+var importRegex = /gpg: key ([0-9A-F]{8}):/;
+
+function postImportGpg(params) {
+
+    // FIXME: prevent duplicates and so on.
+
+    var gpg, pubkey, data = '', username, identifier;
+
+    function insertedAlias(result) {
+        if (result === null) {
+            sendResponse(params, 500, 'Could not import key');
+            return;
+        }
+        sendResponse(params, 200, 'Import successful');
+    }
+
+    function gotImportResult(status) {
+        var m = importRegex.exec(data);
+        if ((status !== 0) || (m === null)) {
+            console.log(status);
+            console.log(m);
+            console.log(data);
+            sendResponse(params, 500, 'Could not import key');
+            return;
+        }
+
+        us_pubkey_alias_query('INSERT INTO pubkey_alias (username, keyid, identifier) VALUES ($1, $2, $3)',
+                              [username, m[1], identifier],
+                              insertedAlias);
+    }
+
+    function gpgRead() {
+        var str = gpg.stderr.read();
+        if (str !== null) {
+            data += str;
+        }
+    }
+
+    function gotUsername(u) {
+        username = u;
+        var gpgDir = getGpgDir(username);
+
+        if (gpgDir === null) {
+            redirectTo(params, '/error/500');
+            return;
+        }
+
+        gpg = child_process.spawn('/usr/bin/gpg',
+                                  ['--homedir', 'var/gpg/' + gpgDir, '--import'],
+                                  { stdio: ['pipe', 'ignore', 'pipe'] });
+        gpg.stderr.on('readable', gpgRead);
+        gpg.stdin.write(pubkey);
+        gpg.stdin.end();
+        gpg.on('close', gotImportResult);
+    }
+
+    function gotFormData(params, uparams) {
+        if (!('pubkey' in uparams) || !('identifier' in uparams)) {
+            sendResponse(params, 400, 'Missing public key data or identifier alias');
+            return;
+        }
+        pubkey = uparams.pubkey;
+        identifier = uparams.identifier;
+        getUsername(params, gotUsername);
+    }
+
+    getFormData(params, gotFormData);
+}
+
 // This returns the list of posts with at least one upvote signed by someone in our network.
 function getDataPostsHtml(params) {
     var body, status, hash;
@@ -2008,6 +2082,10 @@ var places_exact = {
 
     '/key/generate': {
         'POST': postGenerateUserKey
+    },
+
+    '/key/import': {
+        'POST': postImportGpg
     },
 
     '/gpg/generate': {

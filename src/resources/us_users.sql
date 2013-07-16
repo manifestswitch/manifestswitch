@@ -26,3 +26,13 @@ CREATE INDEX passwords_username ON passwords (username);
 -- It then reads back all the passwords for that username, and if
 -- there are any more than expected, it deletes the rows and signals
 -- failure, otherwise, it enables the rows.
+
+CREATE TABLE pubkey_alias (
+       pkey serial,
+       username text,
+       keyid text,
+       identifier text
+);
+
+CREATE INDEX pubkey_alias_pkey ON pubkey_alias (pkey);
+CREATE INDEX pubkey_alias_username ON pubkey_alias (username);
