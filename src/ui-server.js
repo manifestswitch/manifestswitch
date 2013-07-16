@@ -620,6 +620,30 @@ function postLogin(params) {
     getFormData(params, postLoginGotData);
 }
 
+function postRegisterGotData(params, uparams) {
+
+    function insertedUser(result) {
+        if (result === null) {
+            sendResponse(params, 500, 'Could not register account');
+            return;
+        }
+        redirectTo(params, '/');
+    }
+
+    if (uparams.password !== uparams.repassword) {
+        sendResponse(params, 400, "Passwords don't match");
+        return;
+    }
+
+    us_users_query("INSERT INTO passwords (username, password, modified_date, disabled) VALUES ($1, $2, CURRENT_TIMESTAMP, false)",
+                   [uparams.username, uparams.password],
+                   insertedUser);
+}
+
+function postRegister(params) {
+    getFormData(params, postRegisterGotData);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 function getLoginResultPlain(params) {
@@ -758,6 +782,15 @@ function getHomePageHtml(params) {
                              '      <label for="password">password</label>\n' +
                              '      <input name="password" id="password" type="password">\n' +
                              '      <input value="login" type="submit">\n' +
+                             '    </form>\n' +
+                             '    <form action="/register" method="POST">\n' +
+                             '      <label for="username">username</label>\n' +
+                             '      <input name="username" id="username" type="text">\n' +
+                             '      <label for="password">password</label>\n' +
+                             '      <input name="password" id="password" type="password">\n' +
+                             '      <label for="repassword">repeat password</label>\n' +
+                             '      <input name="repassword" id="repassword" type="password">\n' +
+                             '      <input value="register" type="submit">\n' +
                              '    </form>\n')
                     ) +
                     '    <div>\n' +
@@ -1936,6 +1969,10 @@ var places_exact = {
             { type: 'text/plain', action: getLoginResultPlain },
             { type: 'text/html', action: getLoginResultHtml }
         ]
+    },
+
+    '/register': {
+        'POST': postRegister
     },
 
     '/logout': {
