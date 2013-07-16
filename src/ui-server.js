@@ -1739,7 +1739,7 @@ function formatPubkeyId(pubkey) {
 }
 
 function getKeys(params) {
-    var username, result;
+    var username, result, knownKeys;
 
     function gotPublicKeyId(pubkey) {
         var pubkeyStr = '';
@@ -1748,10 +1748,10 @@ function getKeys(params) {
         }
         var body = pubkeyStr + '<div><h2>Keys</h2><ul>';
 
-        for (var i = 0, len = 1; i < len; ++i) {
-            body += '<li>' +  'Anony1' + ' <span title="FEB9 C9F5 D9D1 76D4 ED6C  C5EA A6F3 D557 780D 283E">(?)</span></li>';
+        for (var i = 0, len = knownKeys.length; i < len; ++i) {
+            body += '<li>' +  htmlEscape(knownKeys[i].keyid) + ' ' + htmlEscape(knownKeys[i].identifier) + '</li>';
         }
-        body += '</ul><form method="POST" action="/key/generate"><div><input type="text" name="alias"></div><div><textarea name="pubkey"></textarea></div><input type="submit" name"action" value="Import"></form><div><h2>Groups</h2><ul>';
+        body += '</ul><form method="POST" action="/key/import"><div><input type="text" name="identifier"></div><div><textarea name="pubkey"></textarea></div><input type="submit" name"action" value="Import"></form><div><h2>Groups</h2><ul>';
 
         for (var i = 0, len = result.rows.length; i < len; ++i) {
             body += '<li>' + htmlEscape(result.rows[i].identifier) + '</li>';
@@ -1767,6 +1767,15 @@ function getKeys(params) {
         sendResponse(params, 200, body);
     }
 
+    function gotPubkeyAliases(result) {
+        if (result === null) {
+            sendResponse(params, 500, 'Could not get list of known keys');
+            return;
+        }
+        knownKeys = result.rows;
+        getPublicKeyId(username, gotPublicKeyId);
+    }
+
     function gotKeys(r) {
         result = r;
         if (result === null) {
@@ -1774,7 +1783,9 @@ function getKeys(params) {
             return;
         }
 
-        getPublicKeyId(username, gotPublicKeyId);
+        us_pubkey_alias_query('SELECT identifier, keyid FROM pubkey_alias WHERE username=$1',
+                              [username],
+                              gotPubkeyAliases);
     }
 
     function hasGpgDir(exists) {
