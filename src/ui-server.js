@@ -933,6 +933,10 @@ If it's symkey enc then we will have to enumerate our shared keys
 before we hit the right one (or not).
 
 */
+
+
+// FIXME: use --status-fd more often.
+
 function getDecrypt(params, data, cont) {
     var gpgDir, ch = '', hasPubkey = false, verified = null, signkey = null, keys, key, gpg, gpgStatus, decData, sigRes = '';
 
