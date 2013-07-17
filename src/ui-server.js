@@ -1788,17 +1788,17 @@ function getKeys(params) {
     function gotPublicKeyId(pubkey) {
         var pubkeyStr = '';
         if (pubkeyStr !== null) {
-            pubkeyStr = '<p>Your Key: <a href="/keys/pubkey">' + formatPubkeyId(pubkey) + '</a></p>';
+            pubkeyStr = '<p>Your Key: <a class="hash" href="/keys/pubkey">' + formatPubkeyId(pubkey) + '</a></p>';
         }
-        var body = pubkeyStr + '<div><h2>Keys</h2><ul>';
+        var body = pubkeyStr + '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body><div><h2>Keys</h2><ul>';
 
         for (var i = 0, len = knownKeys.length; i < len; ++i) {
-            body += '<li>' +  htmlEscape(knownKeys[i].keyid) + ' ' + htmlEscape(knownKeys[i].identifier) + '</li>';
+            body += '<li><span class="hash">' +  htmlEscape(knownKeys[i].keyid) + '</span> ' + htmlEscape(knownKeys[i].identifier) + '</li>';
         }
         body += '</ul><form method="POST" action="/key/import"><div><input type="text" name="identifier"></div><div><textarea name="pubkey"></textarea></div><input type="submit" name"action" value="Import"></form><div><h2>Groups</h2><ul>';
 
         for (var i = 0, len = result.rows.length; i < len; ++i) {
-            body += '<li> 65329D94 ' + htmlEscape(result.rows[i].identifier) + '</li>';
+            body += '<li><span class="hash">' + htmlEscape(result.rows[i].key_id) + '</span> ' + htmlEscape(result.rows[i].identifier) + '</li>';
         }
         body += '</ul><form method="POST" action="/key/generate"><input type="text" name="identifier"><input type="submit" name"action" value="Generate"></form></div><div><form action="/key/send" method="POST"><label for="keyfrom">Send key</label> <select id="keyfrom"><option value="889D1D40" selected="selected">my key</option><option value="7B6931FD">user2</option><option value="65329D94">keybob</option></select> <label for="keyto">to</label> <select id="keyto"><option value="" selected="selected"></option><option value="7B6931">user2</option><option value="65329D94">keybob</option></select> <input type="submit" value="Send"></form></div><div><h2>Networks</h2><ul>';
 
@@ -1806,7 +1806,7 @@ function getKeys(params) {
             body += '<li>' + htmlEscape('Tech (public)') + '</li>';
             body += '<li>' + htmlEscape('Friends (private)') + '</li>';
         }
-        body += '</ul><form action="/network/publish" method="POST"><label for="networkfrom">Publish network</label> <select id="networkfrom"><option value="" selected="selected"></option><option value="caf3af6d893b5cb8eae9a90a3054f370a92130863450e3299d742c7a65329d94">Tech</option><option value="7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730">Friends</option></select> <label for="keyto">to</label> <select id="keyto"><option value="" selected="selected"></option><option value="7B6931">user2</option><option value="65329D94">keybob</option></select> <input type="submit" value="Send"></form></div><a href="/">Home</a>';
+        body += '</ul><form action="/network/publish" method="POST"><label for="networkfrom">Publish network</label> <select id="networkfrom"><option value="" selected="selected"></option><option value="caf3af6d893b5cb8eae9a90a3054f370a92130863450e3299d742c7a65329d94">Tech</option><option value="7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730">Friends</option></select> <label for="keyto">to</label> <select id="keyto"><option value="" selected="selected"></option><option value="7B6931">user2</option><option value="65329D94">keybob</option></select> <input type="submit" value="Send"></form></div><a href="/">Home</a></body></html>';
 
         sendResponse(params, 200, body);
     }
@@ -1834,7 +1834,7 @@ function getKeys(params) {
 
     function hasGpgDir(exists) {
         if (exists) {
-            us_keys_query('SELECT identifier FROM secrets WHERE username=$1',
+            us_keys_query('SELECT identifier, key_id FROM secrets WHERE username=$1',
                           [username],
                           gotKeys)
         } else {
