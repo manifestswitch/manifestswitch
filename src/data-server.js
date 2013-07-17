@@ -274,6 +274,106 @@ function getDataListHtml(params) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+function getDataCount(params, cont) {
+    var waiting = 0, cs_result;
+
+    function checkFinish() {
+        --waiting;
+        if (waiting === 0) {
+
+        }
+    }
+
+    function gotChannelCounts(result) {
+        if (result === null) {
+            sendResponse(params, 500, 'Could not get channel counts');
+            return;
+        }
+        cs_result = result;
+    }
+
+    function gotChannelCounts(result) {
+        if (result === null) {
+            sendResponse(params, 500, 'Could not get channel counts');
+            return;
+        }
+        cs_result = result;
+    }
+
+    var query = url.parse(params.request.url, true).query, cs = null, ks = null;
+    if (!('c' in query) && !('k' in query)) {
+        cont(null, {reason:1});
+        return;
+    }
+    if ('c' in query) {
+        cs = query.c.split('.');
+        ++waiting;
+        ds_refers_query('SELECT rk.read_key,COUNT(cc.pkey) FROM channel_content AS cc, read_keys AS rk WHERE rk.read_key=$1 AND cc.read_key=rk.pkey GROUP BY cc.read_key',
+                        [],
+                        gotChannelCounts);
+    }
+    if ('k' in query) {
+        ++waiting;
+        ks = query.k.split('.');
+        ++waiting;
+        ds_refers_query('SELECT fa.fingerprint,COUNT(fc.pkey) FROM fingerprint_content AS fc, fingerprint_alias AS fa WHERE fa.fingerprint=$1 AND fc.fingerprint_alias=fa.pkey GROUP BY fc.fingerprint_alias',
+                        [],
+                        gotChannelCounts);
+    }
+}
+
+function getDataCountPlain(params) {
+    function gotDataCountPlain(rv, err) {
+        var body = '', status;
+
+        if (rv === null) {
+            sendResponse(params, 500, 'Could not fetch list counts');
+            return;
+        }
+
+        for (var it in rv) {
+            body += it + ' ' + rv[it] + '\n';
+        }
+
+        sendResponse(params, 200, body);
+    }
+    getDataCount(params, gotDataCountPlain);
+}
+
+function getDataCountJson(params) {
+    function gotDataCountJson(rv) {
+        var body = '', status;
+
+        if (rv === null) {
+            sendResponse(params, 500, '{ "status": 500, "result": "Internal Server Error", "code": 0, "message": "Could not fetch list counts." }');
+            return;
+        }
+        sendResponse(params, 200, '{ "status": 200, "result": "OK", "counts": ' + JSON.stringify(rv) + ' }');
+    }
+
+    getDataCount(params, gotDataCountJson);
+}
+
+function getDataCountHtml(params) {
+    function gotDataCountHtml(rv) {
+        var body = '<ul>', status;
+
+        if (rv === null) {
+            sendResponse(params, 500, 'Could not fetch list counts');
+            return;
+        }
+        for (var it in rv) {
+            body += '<li>' + htmlEscape(it) + ' ' + rv[it] + '</li>\n';
+        }
+        body += '</ul>';
+
+        sendResponse(params, 200, body);
+    }
+    getDataCount(params, gotDataCountHtml);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 function getDataFormHtml(params) {
     var body = ('    <form action="/data" method="POST">\n' +
                 '      <textarea name="content"></textarea>\n' +
@@ -316,7 +416,7 @@ function getDataFormHtml(params) {
 // FIXME: implement upload quotas. Each IP address can only upload a
 // certain amount of data per day, and a max size for each upload.
 function postDataItem(params) {
-    var shasum, uparams, str = '', hex, references, contentPkey;
+    var shasum, uparams, str = '', hex, references, contentPkey, c = null, k = null, hashPkey;
 
     function finis() {
         redirectTo(params, '/data/result?sha256=' + hex + '&prestate=none');
@@ -329,23 +429,17 @@ function postDataItem(params) {
         finis();
     }
 
-    function insertedRefersHashes(result) {
+    function insertedRefersHash(result) {
         if (result !== null) {
             // not much we can do here
             finis();
         }
-        if (references.length === 0) {
-            finis();
-            return;
-        }
-        var valuesStr = "('" + result.rows[0].pkey + "','" + result.rows[1].pkey + "')";
 
-        for (var i = 2, len = result.rows.length; i < len; ++i) {
-            valuesStr += ",('" + result.rows[0].pkey + "','" + result.rows[i].pkey + "')";
-        }
+        hashPkey = result.rows[0].pkey;
 
-        ds_refers_query("INSERT INTO refers (referrer,referree) VALUES " + valuesStr, [],
-                       insertedRefers);
+        ds_refers_query("INSERT INTO refers (referrer,referree) VALUES " + valuesStr,
+                        [],
+                        insertedRefers);
     }
 
     function deletedDuplicateInsert(result) {
@@ -370,15 +464,8 @@ function postDataItem(params) {
             }
         }
 
-        var valuesStr = "('" + hex + "')";
-        references = getReferencedHashes(uparams.content);
-
-        for (var i = 0, len = references.length; i < len; ++i) {
-            valuesStr += ",('" + references[i] + "')";
-        }
-
-        ds_refers_query("INSERT INTO refers_hash (sha256) VALUES " + valuesStr + " RETURNING pkey", [],
-                       insertedRefersHashes);
+        ds_refers_query("INSERT INTO refers_hash (sha256) VALUES ($1) RETURNING pkey", [hex],
+                       insertedRefersHash);
     }
 
     function selectContinue(result) {
@@ -406,9 +493,26 @@ function postDataItem(params) {
 
     function postDataItemEnd() {
         uparams = url.parse('?' + str, true).query;
+
+        if (!('c' in uparams) && !('k' in uparams)) {
+            sendResponse(params, 400, 'Please supply a write token "c" or "k"');
+            return;
+        }
+        if ('c' in uparams) {
+            c = uparams.c;
+        }
+        if ('k' in uparams) {
+            k = uparams.k;
+        }
+        if ((c !== null) && (k !== null)) {
+            sendResponse(params, 400, 'Please supply only one write token "c" or "k"');
+            return;
+        }
+
         shasum = crypto.createHash('sha256');
         shasum.setEncoding('hex');
         shasum.on('readable', shasumRead);
+
         if (uparams.content !== '') {
             shasum.write(uparams.content);
         }
@@ -647,6 +751,15 @@ var places_exact = {
             { type: 'text/plain', action: getHomePagePlain },
             { type: 'text/html', action: getHomePageHtml }
         ]
+    },
+
+    '/count': {
+        'GET': [
+            { type: 'application/json', action: getDataCountJson },
+            { type: 'text/plain', action: getDataCountPlain },
+            { type: 'text/html', action: getDataCountHtml }
+        ],
+        'POST': postDataItem
     },
 
     '/data': {
