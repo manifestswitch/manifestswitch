@@ -430,9 +430,10 @@ function postDataItem(params) {
     }
 
     function insertedRefersHash(result) {
-        if (result !== null) {
+        if (result === null) {
             // not much we can do here
             finis();
+            return;
         }
 
         hashPkey = result.rows[0].pkey;
