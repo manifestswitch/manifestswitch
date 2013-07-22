@@ -376,6 +376,8 @@ function getDataCountHtml(params) {
 
 function getDataFormHtml(params) {
     var body = ('    <form action="/data" method="POST">\n' +
+                '      <input type="text" name="c">\n' +
+                '      <input type="text" name="k">\n' +
                 '      <textarea name="content"></textarea>\n' +
                 '      <input value="submit" type="submit">\n' +
                 '    </form>\n');
@@ -416,13 +418,14 @@ function getDataFormHtml(params) {
 // FIXME: implement upload quotas. Each IP address can only upload a
 // certain amount of data per day, and a max size for each upload.
 function postDataItem(params) {
-    var shasum, uparams, str = '', hex, references, contentPkey, c = null, k = null, hashPkey;
+    var shasum, uparams, str = '', hex, references, contentPkey,
+    c = null, k = null, hashPkey, rsha, read_key = '', rpkey;
 
     function finis() {
         redirectTo(params, '/data/result?sha256=' + hex + '&prestate=none');
     }
 
-    function insertedRefers(result) {
+    function insertedChannelContent(result) {
         if (result === null) {
             // not much we can do here
         }
@@ -438,13 +441,22 @@ function postDataItem(params) {
 
         hashPkey = result.rows[0].pkey;
 
-        ds_refers_query("INSERT INTO refers (referrer,referree) VALUES " + valuesStr,
-                        [],
-                        insertedRefers);
+        async_log(hashPkey);
+
+        if (c !== null) {
+            async_log('cc');
+            ds_refers_query('INSERT INTO channel_content (read_key, hash) VALUES ($1, $2)',
+                            [rpkey, hashPkey],
+                            insertedChannelContent);
+        } else {
+            ds_refers_query('INSERT INTO fingerprint_content (fingerprint_alias, hash) VALUES ($1, $2)',
+                            [rpkey, hashPkey],
+                            insertedChannelContent);
+        }
     }
 
     function deletedDuplicateInsert(result) {
-        if (result !== null) {
+        if (result === null) {
             // not much we can do
         }
         redirectTo(params, '/data/result?sha256=' + hex + '&prestate=same');
@@ -461,12 +473,11 @@ function postDataItem(params) {
                 (result.rows[j].pkey < contentPkey)) {
                 ds_content_query("DELETE FROM content WHERE pkey=" + contentPkey, [],
                                  deletedDuplicateInsert);
-                return;
             }
         }
 
         ds_refers_query("INSERT INTO refers_hash (sha256) VALUES ($1) RETURNING pkey", [hex],
-                       insertedRefersHash);
+                        insertedRefersHash);
     }
 
     function selectContinue(result) {
@@ -487,9 +498,63 @@ function postDataItem(params) {
             return;
         }
 
+        //'INSERT INTO content (sha256, content, gone) SELECT '" + hex + "', $1, false  WHERE NOT EXISTS (SELECT sha256 FROM content WHERE sha256='" + hex + "') RETURNING pkey'
+
         ds_content_query("INSERT INTO content (sha256, content, gone) VALUES ('" + hex + "', $1, false) RETURNING pkey",
                          [uparams.content],
                          selectContinue);
+    }
+
+    function gotReadKeyContinue() {
+        shasum = crypto.createHash('sha256');
+        shasum.setEncoding('hex');
+        shasum.on('readable', shasumRead);
+
+        if (uparams.content !== '') {
+            shasum.write(uparams.content);
+        }
+        shasum.end();
+    }
+
+    function gotReadPkey(result) {
+        if (result === null) {
+            sendResponse(params, 500, 'Could not insert data');
+            return;
+        }
+        rpkey = result.rows[0].pkey;
+        gotReadKeyContinue();
+    }
+
+    function rshaRead() {
+        var s = rsha.read();
+        if (s !== null) {
+            read_key += s;
+        }
+    }
+
+    function insertedReadPkey(result) {
+        if (result === null) {
+            sendResponse(params, 500, 'Could not insert data');
+            return;
+        }
+        ds_refers_query('SELECT pkey FROM read_keys WHERE read_key=$1',
+                        [read_key],
+                        gotReadPkey);
+    }
+
+    function rshaEnd() {
+        ds_refers_query('INSERT INTO read_keys (read_key) SELECT $1 WHERE NOT EXISTS (SELECT read_key FROM read_keys WHERE read_key=$1)',
+                        [read_key],
+                        insertedReadPkey);
+    }
+
+    function gotFingerprintAlias(result) {
+        if (result === null) {
+            sendResponse(params, 500, 'Could not insert data');
+            return;
+        }
+        rpkey = result.rows[0].pkey;
+        gotReadKeyContinue();
     }
 
     function postDataItemEnd() {
@@ -499,10 +564,10 @@ function postDataItem(params) {
             sendResponse(params, 400, 'Please supply a write token "c" or "k"');
             return;
         }
-        if ('c' in uparams) {
+        if (('c' in uparams) && (uparams.c !== '')) {
             c = uparams.c;
         }
-        if ('k' in uparams) {
+        if (('k' in uparams) && (uparams.k !== '')) {
             k = uparams.k;
         }
         if ((c !== null) && (k !== null)) {
@@ -510,14 +575,22 @@ function postDataItem(params) {
             return;
         }
 
-        shasum = crypto.createHash('sha256');
-        shasum.setEncoding('hex');
-        shasum.on('readable', shasumRead);
-
-        if (uparams.content !== '') {
-            shasum.write(uparams.content);
+        if (c !== null) {
+            // sha256 c into base64
+            rsha = crypto.createHash('sha256');
+            rsha.setEncoding('base64');
+            rsha.on('readable', rshaRead);
+            rsha.on('end', rshaEnd);
+            if (c !== '') {
+                rsha.write(c);
+            }
+            rsha.end();
+        } else {
+            // select alias from table
+            ds_refers_query('SELECT pkey FROM fingerprint_alias WHERE write_key=$1',
+                            [k],
+                            gotFingerprintAlias);
         }
-        shasum.end();
     }
 
     function postDataItemData() {
