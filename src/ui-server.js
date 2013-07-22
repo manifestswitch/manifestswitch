@@ -181,19 +181,19 @@ var us_sessions_conf = "postgres://us_sessions:_US_SESSIONS_PASS_@localhost:5432
 var us_keys_conf = "postgres://us_keys:_US_KEYS_PASS_@localhost:5432/us_keys";
 
 function us_users_query(query, params, cb) {
-    perform_query(us_users_conf, query, params, cb);
+    perform_query(us_users_conf, query, params, cb, null);
 }
 
 function us_pubkey_alias_query(query, params, cb) {
-    perform_query(us_pubkeyalias_conf, query, params, cb);
+    perform_query(us_pubkeyalias_conf, query, params, cb, null);
 }
 
 function us_sessions_query(query, params, cb) {
-    perform_query(us_sessions_conf, query, params, cb);
+    perform_query(us_sessions_conf, query, params, cb, null);
 }
 
 function us_keys_query(query, params, cb) {
-    perform_query(us_keys_conf, query, params, cb);
+    perform_query(us_keys_conf, query, params, cb, null);
 }
 
 

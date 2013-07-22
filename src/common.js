@@ -199,7 +199,7 @@ function getReferencedHashes(content) {
 ////////////////////////////////////////////////////////////////////////////////
 /// Database
 
-function perform_query(conf, query, params, cb) {
+function perform_query(conf, query, params, cb, cberr) {
     var done_save;
 
     function got_query(err, result) {
@@ -207,7 +207,11 @@ function perform_query(conf, query, params, cb) {
 
         if (err !== null) {
             async_log('error in query: ' + query, err);
-            cb(null);
+            if (cberr !== null) {
+                cberr(err)
+            } else {
+                cb(null);
+            }
             return;
         }
         cb(result);

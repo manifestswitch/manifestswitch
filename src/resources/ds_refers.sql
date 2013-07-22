@@ -50,7 +50,7 @@ CREATE TABLE channel_content (
        hash integer
 );
 CREATE INDEX channel_content_pkey ON channel_content (pkey);
-CREATE INDEX channel_content_read_key ON channel_content (read_key);
+CREATE INDEX channel_content_read_key_hash ON channel_content (read_key, hash);
 
 -- The initial setup allows us to assign a random Write key as the
 -- pair for a fingerprint Read key
@@ -72,4 +72,4 @@ CREATE TABLE fingerprint_content (
        hash integer
 );
 CREATE INDEX fingerprint_content_pkey ON fingerprint_content (pkey);
-CREATE INDEX fingerprint_content_fingerprint_alias ON fingerprint_content (fingerprint_alias);
+CREATE INDEX fingerprint_content_fingerprint_alias_hash ON fingerprint_content (fingerprint_alias, hash);

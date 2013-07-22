@@ -62,15 +62,18 @@ var data_server_css_gzip = new Buffer('H4sICIuczFECA2RhdGEtc2VydmVyLmNzcwDTy0gsz
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/// TODO: consider some kind of in-memory cache on the HTTP servers,
+/// bounded by memory usage.
+
 var ds_refers_conf = "postgres://ds_refers:_DS_REFERS_PASS_@localhost:5432/ds_refers";
 var ds_content_conf = "postgres://ds_content:_DS_CONTENT_PASS_@localhost:5432/ds_content";
 
-function ds_content_query(query, params, cb) {
-    perform_query(ds_content_conf, query, params, cb);
+function ds_content_query(query, params, cb, cberr) {
+    perform_query(ds_content_conf, query, params, cb, cberr);
 }
 
-function ds_refers_query(query, params, cb) {
-    perform_query(ds_refers_conf, query, params, cb);
+function ds_refers_query(query, params, cb, cberr) {
+    perform_query(ds_refers_conf, query, params, cb, cberr);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -125,11 +128,11 @@ function getDataList(params, cont) {
     var rv = [], first, count, rs = null, rsstr = null;
     var query = url.parse(params.request.url, true).query;
 
+    function failResults(err) {
+        cont(null);
+    }
+
     function gotResults(result) {
-        if (result === null) {
-            cont(null);
-            return;
-        }
         var source = result.rows;
 
         if (first < 0) {
@@ -194,16 +197,16 @@ function getDataList(params, cont) {
     if (rsstr === null) {
         if (first < 0) {
             ds_refers_query("SELECT pkey, sha256 FROM refers_hash ORDER BY pkey", [],
-                            gotResults);
+                            gotResults, failResults);
         } else {
             ds_refers_query("SELECT pkey, sha256 FROM refers_hash ORDER BY pkey OFFSET $1", [first],
-                            gotResults);
+                            gotResults, failResults);
         }
     } else {
         if (first < 0) {
-            ds_refers_query("SELECT rh2.pkey, rh2.sha256 FROM refers as r, refers_hash AS rh1, refers_hash AS rh2 WHERE rh1.sha256 IN (" + rsstr + ") AND rh1.pkey=r.referree AND rh2.pkey=r.referrer ORDER BY r.pkey", [], gotResults);
+            ds_refers_query("SELECT rh2.pkey, rh2.sha256 FROM refers as r, refers_hash AS rh1, refers_hash AS rh2 WHERE rh1.sha256 IN (" + rsstr + ") AND rh1.pkey=r.referree AND rh2.pkey=r.referrer ORDER BY r.pkey", [], gotResults, failResults);
         } else {
-            ds_refers_query("SELECT rh2.pkey, rh2.sha256 FROM refers as r, refers_hash AS rh1, refers_hash AS rh2 WHERE rh1.sha256 IN (" + rsstr + ") AND rh1.pkey=r.referree AND rh2.pkey=r.referrer ORDER BY r.pkey OFFSET $1", [first], gotResults);
+            ds_refers_query("SELECT rh2.pkey, rh2.sha256 FROM refers as r, refers_hash AS rh1, refers_hash AS rh2 WHERE rh1.sha256 IN (" + rsstr + ") AND rh1.pkey=r.referree AND rh2.pkey=r.referrer ORDER BY r.pkey OFFSET $1", [first], gotResults, failResults);
         }
     }
 }
@@ -284,19 +287,11 @@ function getDataCount(params, cont) {
         }
     }
 
-    function gotChannelCounts(result) {
-        if (result === null) {
-            sendResponse(params, 500, 'Could not get channel counts');
-            return;
-        }
-        cs_result = result;
+    function problem(err) {
+        sendResponse(params, 500, 'Could not get channel counts');
     }
 
     function gotChannelCounts(result) {
-        if (result === null) {
-            sendResponse(params, 500, 'Could not get channel counts');
-            return;
-        }
         cs_result = result;
     }
 
@@ -310,7 +305,7 @@ function getDataCount(params, cont) {
         ++waiting;
         ds_refers_query('SELECT rk.read_key,COUNT(cc.pkey) FROM channel_content AS cc, read_keys AS rk WHERE rk.read_key=$1 AND cc.read_key=rk.pkey GROUP BY cc.read_key',
                         [],
-                        gotChannelCounts);
+                        gotChannelCounts, problem);
     }
     if ('k' in query) {
         ++waiting;
@@ -318,7 +313,7 @@ function getDataCount(params, cont) {
         ++waiting;
         ds_refers_query('SELECT fa.fingerprint,COUNT(fc.pkey) FROM fingerprint_content AS fc, fingerprint_alias AS fa WHERE fa.fingerprint=$1 AND fc.fingerprint_alias=fa.pkey GROUP BY fc.fingerprint_alias',
                         [],
-                        gotChannelCounts);
+                        gotChannelCounts, problem);
     }
 }
 
@@ -418,76 +413,43 @@ function getDataFormHtml(params) {
 // FIXME: implement upload quotas. Each IP address can only upload a
 // certain amount of data per day, and a max size for each upload.
 function postDataItem(params) {
-    var shasum, uparams, str = '', hex, references, contentPkey,
+    var shasum, uparams, str = '', hex, references,
     c = null, k = null, hashPkey, rsha, read_key = '', rpkey;
 
     function finis() {
         redirectTo(params, '/data/result?sha256=' + hex + '&prestate=none');
     }
 
+    function problem() {
+        sendResponse(params, 500, 'Could not insert data');
+    }
+
     function insertedChannelContent(result) {
-        if (result === null) {
-            // not much we can do here
-        }
         finis();
     }
 
-    function insertedRefersHash(result) {
-        if (result === null) {
-            // not much we can do here
-            finis();
-            return;
-        }
-
+    function selectedRefersHash(result) {
         hashPkey = result.rows[0].pkey;
 
-        async_log(hashPkey);
-
         if (c !== null) {
-            async_log('cc');
-            ds_refers_query('INSERT INTO channel_content (read_key, hash) VALUES ($1, $2)',
+            ds_refers_query('INSERT INTO channel_content (read_key, hash) SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM channel_content WHERE read_key=$1 AND hash=$2)',
                             [rpkey, hashPkey],
-                            insertedChannelContent);
+                            insertedChannelContent, problem);
         } else {
-            ds_refers_query('INSERT INTO fingerprint_content (fingerprint_alias, hash) VALUES ($1, $2)',
+            ds_refers_query('INSERT INTO fingerprint_content (fingerprint_alias, hash) SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM fingerprint_content WHERE fingerprint_alias=$1 AND hash=$2)',
                             [rpkey, hashPkey],
-                            insertedChannelContent);
+                            insertedChannelContent, problem);
         }
     }
 
-    function deletedDuplicateInsert(result) {
-        if (result === null) {
-            // not much we can do
-        }
-        redirectTo(params, '/data/result?sha256=' + hex + '&prestate=same');
+    function insertedRefersHash(result) {
+        ds_refers_query("SELECT pkey FROM refers_hash WHERE sha256=$1", [hex],
+                        selectedRefersHash, problem);
     }
 
-    function writeContinue(result) {
-        if ((result === null) || (result.rows.length === 0)) {
-            redirectTo(params, '/data/result?sha256=' + hex + '&prestate=none');
-            return;
-        }
-
-        for (var j = 0, jlen = result.rows.length; j < jlen; ++j) {
-            if ((result.rows[j].content.toString('utf8') === uparams.content) &&
-                (result.rows[j].pkey < contentPkey)) {
-                ds_content_query("DELETE FROM content WHERE pkey=" + contentPkey, [],
-                                 deletedDuplicateInsert);
-            }
-        }
-
-        ds_refers_query("INSERT INTO refers_hash (sha256) VALUES ($1) RETURNING pkey", [hex],
-                        insertedRefersHash);
-    }
-
-    function selectContinue(result) {
-        if ((result === null) || (result.rows.length === 0)) {
-            redirectTo(params, '/data/result?sha256=' + hex + '&prestate=none');
-            return;
-        }
-        contentPkey = result.rows[0].pkey;
-
-        ds_content_query("SELECT pkey,content FROM content WHERE sha256='" + hex + "'", [], writeContinue);
+    function insertedContent(result) {
+        ds_refers_query("INSERT INTO refers_hash (sha256) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM refers_hash WHERE sha256=$1)", [hex],
+                        insertedRefersHash, problem);
     }
 
     function shasumRead() {
@@ -498,11 +460,9 @@ function postDataItem(params) {
             return;
         }
 
-        //'INSERT INTO content (sha256, content, gone) SELECT '" + hex + "', $1, false  WHERE NOT EXISTS (SELECT sha256 FROM content WHERE sha256='" + hex + "') RETURNING pkey'
-
-        ds_content_query("INSERT INTO content (sha256, content, gone) VALUES ('" + hex + "', $1, false) RETURNING pkey",
-                         [uparams.content],
-                         selectContinue);
+        ds_content_query("INSERT INTO content (sha256, content, gone) SELECT $1, $2, false WHERE NOT EXISTS (SELECT 1 FROM content WHERE sha256=$1)",
+                         [hex, uparams.content],
+                         insertedContent, problem);
     }
 
     function gotReadKeyContinue() {
@@ -517,10 +477,6 @@ function postDataItem(params) {
     }
 
     function gotReadPkey(result) {
-        if (result === null) {
-            sendResponse(params, 500, 'Could not insert data');
-            return;
-        }
         rpkey = result.rows[0].pkey;
         gotReadKeyContinue();
     }
@@ -533,33 +489,27 @@ function postDataItem(params) {
     }
 
     function insertedReadPkey(result) {
-        if (result === null) {
-            sendResponse(params, 500, 'Could not insert data');
-            return;
-        }
         ds_refers_query('SELECT pkey FROM read_keys WHERE read_key=$1',
                         [read_key],
-                        gotReadPkey);
+                        gotReadPkey, problem);
     }
 
     function rshaEnd() {
-        ds_refers_query('INSERT INTO read_keys (read_key) SELECT $1 WHERE NOT EXISTS (SELECT read_key FROM read_keys WHERE read_key=$1)',
+        ds_refers_query('INSERT INTO read_keys (read_key) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM read_keys WHERE read_key=$1)',
                         [read_key],
-                        insertedReadPkey);
+                        insertedReadPkey, problem);
     }
 
     function gotFingerprintAlias(result) {
-        if (result === null) {
-            sendResponse(params, 500, 'Could not insert data');
-            return;
-        }
         rpkey = result.rows[0].pkey;
         gotReadKeyContinue();
     }
 
     function postDataItemEnd() {
+        // TODO: use plain data?
         uparams = url.parse('?' + str, true).query;
 
+        // TODO: move these into headers?
         if (!('c' in uparams) && !('k' in uparams)) {
             sendResponse(params, 400, 'Please supply a write token "c" or "k"');
             return;
@@ -589,7 +539,7 @@ function postDataItem(params) {
             // select alias from table
             ds_refers_query('SELECT pkey FROM fingerprint_alias WHERE write_key=$1',
                             [k],
-                            gotFingerprintAlias);
+                            gotFingerprintAlias, problem);
         }
     }
 
@@ -608,15 +558,15 @@ function postDataItem(params) {
 ////////////////////////////////////////////////////////////////////////////////
 
 function getDataItem(hash, cb) {
-    function selectContinue(result) {
-        if ((result !== null) && (result.rows.length > 0)) {
-            cb(result.rows[0]);
-            return;
-        }
+    function selectFail(err) {
         cb(null);
     }
 
-    ds_content_query("SELECT content FROM content WHERE sha256='" + hash + "' LIMIT 1", [], selectContinue);
+    function selectContinue(result) {
+        cb(result.rows[0]);
+    }
+
+    ds_content_query("SELECT content FROM content WHERE sha256='" + hash + "' LIMIT 1", [], selectContinue, selectFail);
 }
 
 // TODO: support Range header
@@ -678,14 +628,14 @@ function getDataItemHtml(params) {
 
 function getDataResult(params, cont) {
 
+    function failDataResult(err) {
+        cont({ err: 2, hash: null, prestate: query.prestate });
+    }
+
     function gotDataResult(result) {
         // XXX: this is wrong, because it may match a different
         // content on same hash
-        if ((result !== null) && (result.rows.length > 0)) {
-            cont({ err: 0, hash: query.sha256, prestate: query.prestate });
-            return;
-        }
-        cont({ err: 2, hash: null, prestate: query.prestate });
+        cont({ err: 0, hash: query.sha256, prestate: query.prestate });
     }
 
     var query = url.parse(params.request.url, true).query;
@@ -704,7 +654,8 @@ function getDataResult(params, cont) {
         return;
     }
 
-    ds_content_query("SELECT content FROM content WHERE sha256='" + query.sha256 + "'", [], gotDataResult);
+    ds_content_query("SELECT content FROM content WHERE sha256='" + query.sha256 + "'", [],
+                     gotDataResult, failDataResult);
 }
 
 function getDataResultPlain(params) {
