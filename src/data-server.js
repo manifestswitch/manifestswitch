@@ -413,7 +413,7 @@ function getDataFormHtml(params) {
 // FIXME: implement upload quotas. Each IP address can only upload a
 // certain amount of data per day, and a max size for each upload.
 function postDataItem(params) {
-    var shasum, uparams, str = '', hex, references,
+    var shasum, contentSize = 0, contentParts = [], content = null, hex, references,
     c = null, k = null, hashPkey, rsha, read_key = '', rpkey;
 
     function finis() {
@@ -461,7 +461,7 @@ function postDataItem(params) {
         }
 
         ds_content_query("INSERT INTO content (sha256, content, gone) SELECT $1, $2, false WHERE NOT EXISTS (SELECT 1 FROM content WHERE sha256=$1)",
-                         [hex, uparams.content],
+                         [hex, '\\x' + content.toString('hex')],
                          insertedContent, problem);
     }
 
@@ -470,8 +470,8 @@ function postDataItem(params) {
         shasum.setEncoding('hex');
         shasum.on('readable', shasumRead);
 
-        if (uparams.content !== '') {
-            shasum.write(uparams.content);
+        if (content.length > 0) {
+            shasum.write(content);
         }
         shasum.end();
     }
@@ -506,24 +506,7 @@ function postDataItem(params) {
     }
 
     function postDataItemEnd() {
-        // TODO: use plain data?
-        uparams = url.parse('?' + str, true).query;
-
-        // TODO: move these into headers?
-        if (!('c' in uparams) && !('k' in uparams)) {
-            sendResponse(params, 400, 'Please supply a write token "c" or "k"');
-            return;
-        }
-        if (('c' in uparams) && (uparams.c !== '')) {
-            c = uparams.c;
-        }
-        if (('k' in uparams) && (uparams.k !== '')) {
-            k = uparams.k;
-        }
-        if ((c !== null) && (k !== null)) {
-            sendResponse(params, 400, 'Please supply only one write token "c" or "k"');
-            return;
-        }
+        content = Buffer.concat(contentParts);
 
         if (c !== null) {
             // sha256 c into base64
@@ -544,13 +527,33 @@ function postDataItem(params) {
     }
 
     function postDataItemData() {
-        var s = params.request.read();
-        if (s !== null) {
-            str += s;
+        var ch = params.request.read();
+        if (ch !== null) {
+            contentSize += ch.length;
+            // TODO: have a more intelligent quota check
+            if (contentSize > 4096) {
+                sendResponse(params, 400, 'Maximum input is 4096 bytes');
+                return;
+            }
+            contentParts.push(ch);
         }
     }
 
-    params.request.setEncoding('utf8');
+    if (('x-c' in params.request.headers) && (params.request.headers['x-c'] !== '')) {
+        c = params.request.headers['x-c'];
+    }
+    if (('x-k' in params.request.headers) && (params.request.headers['x-k'] !== '')) {
+        k = params.request.headers['x-k'];
+    }
+    if ((c === null) && (k === null)) {
+        sendResponse(params, 400, 'Please supply a write token "c" or "k"');
+        return;
+    }
+    if ((c !== null) && (k !== null)) {
+        sendResponse(params, 400, 'Please supply only one write token "c" or "k"');
+        return;
+    }
+
     params.request.on('end', postDataItemEnd);
     params.request.on('readable', postDataItemData);
 }
