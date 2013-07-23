@@ -277,57 +277,117 @@ function getDataListHtml(params) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+function varstring(n) {
+    var s;
+    if (n === 0) {
+        return '';
+    }
+    s = '$1';
+    for (var i = 2; i <= n; ++i) {
+        s += ',$' + i;
+    }
+    return s;
+}
+
+function replaceB64(chr) {
+    if (chr === '-') {
+        return '+';
+    }
+    if (chr === '_') {
+        return '/';
+    }
+    if (chr === '~') {
+        return '=';
+    }
+    return chr;
+}
+
+var replaceB64Regex = /[_~-]/g;
+
 function getDataCount(params, cont) {
-    var waiting = 0, cs_result;
+    var waiting = 0, cs_result = null, ks_result = null, cs = null, ks = null, bailed = false;
 
     function checkFinish() {
         --waiting;
-        if (waiting === 0) {
-
+        if (waiting !== 0) {
+            return;
         }
+        cont(cs_result, ks_result, null);
     }
 
     function problem(err) {
-        sendResponse(params, 500, 'Could not get channel counts');
+        if (!bailed) {
+            bailed = true;
+            cont(null, null, {reason:2});
+        }
     }
 
     function gotChannelCounts(result) {
-        cs_result = result;
+        cs_result = result.rows;
+        checkFinish();
     }
 
-    var query = url.parse(params.request.url, true).query, cs = null, ks = null;
-    if (!('c' in query) && !('k' in query)) {
-        cont(null, {reason:1});
+    function gotFingerprintCounts(result) {
+        ks_result = result.rows;
+        checkFinish();
+    }
+
+    var query = url.parse(params.request.url, true).query;
+
+    if (('c' in query) && (query.c !== '')) {
+        cs = query.c.split('.');
+        // unencoded alternative chars are provided as aliases to
+        // base64 "/+=" chars
+        for (var i = 0, len = cs.length; i < len; ++i) {
+            cs[i] = cs[i].replace(replaceB64Regex, replaceB64);
+        }
+    }
+    if (('k' in query) && (query.k !== '')) {
+        ks = query.k.split('.');
+        for (var i = 0, len = ks.length; i < len; ++i) {
+            ks[i] = ks[i].replace(replaceB64Regex, replaceB64);
+        }
+    }
+
+    if ((cs === null) && (ks === null)) {
+        cont(null, null, {reason:1});
         return;
     }
-    if ('c' in query) {
-        cs = query.c.split('.');
+
+    if (cs !== null) {
         ++waiting;
-        ds_refers_query('SELECT rk.read_key,COUNT(cc.pkey) FROM channel_content AS cc, read_keys AS rk WHERE rk.read_key=$1 AND cc.read_key=rk.pkey GROUP BY cc.read_key',
-                        [],
+        var csstr = varstring(cs.length);
+        ds_refers_query('SELECT rk.read_key,COUNT(cc.pkey) FROM channel_content AS cc, read_keys AS rk WHERE rk.read_key IN (' + csstr + ') AND cc.read_key=rk.pkey GROUP BY rk.read_key',
+                        cs,
                         gotChannelCounts, problem);
     }
-    if ('k' in query) {
+    if (ks !== null) {
         ++waiting;
-        ks = query.k.split('.');
-        ++waiting;
-        ds_refers_query('SELECT fa.fingerprint,COUNT(fc.pkey) FROM fingerprint_content AS fc, fingerprint_alias AS fa WHERE fa.fingerprint=$1 AND fc.fingerprint_alias=fa.pkey GROUP BY fc.fingerprint_alias',
-                        [],
-                        gotChannelCounts, problem);
+        var ksstr = varstring(ks.length);
+        ds_refers_query('SELECT fa.fingerprint,COUNT(fc.pkey) FROM fingerprint_content AS fc, fingerprint_alias AS fa WHERE fa.fingerprint IN (' + ksstr + ') AND fc.fingerprint_alias=fa.pkey GROUP BY fa.fingerprint',
+                        ks,
+                        gotFingerprintCounts, problem);
     }
 }
 
 function getDataCountPlain(params) {
-    function gotDataCountPlain(rv, err) {
+    function gotDataCountPlain(cs, ks, err) {
         var body = '', status;
 
-        if (rv === null) {
+        if (err !== null) {
             sendResponse(params, 500, 'Could not fetch list counts');
             return;
         }
 
-        for (var it in rv) {
-            body += it + ' ' + rv[it] + '\n';
+        if (cs !== null) {
+            for (var i = 0, len = cs.length; i < len; ++i) {
+                body += cs[i].read_key + ' ' + cs[i].count + '\n';
+            }
+        }
+        if (ks !== null) {
+            for (var i = 0, len = ks.length; i < len; ++i) {
+                body += cs[i].fingerprint_alias + ' ' + cs[i].count + '\n';
+            }
         }
 
         sendResponse(params, 200, body);
@@ -336,31 +396,53 @@ function getDataCountPlain(params) {
 }
 
 function getDataCountJson(params) {
-    function gotDataCountJson(rv) {
+    function gotDataCountJson(cs, ks, err) {
         var body = '', status;
 
-        if (rv === null) {
+        if (err !== null) {
             sendResponse(params, 500, '{ "status": 500, "result": "Internal Server Error", "code": 0, "message": "Could not fetch list counts." }');
             return;
         }
-        sendResponse(params, 200, '{ "status": 200, "result": "OK", "counts": ' + JSON.stringify(rv) + ' }');
+
+        body = '{ "status": 200, "result": "OK", "counts": {';
+        if (cs !== null) {
+            for (var i = 0, len = cs.length; i < len; ++i) {
+                body += '"' + cs[i].read_key + '": ' + cs[i].count + ',\n';
+            }
+        }
+        if (ks !== null) {
+            for (var i = 0, len = ks.length; i < len; ++i) {
+                body += '"' + cs[i].fingerprint_alias + '": ' + cs[i].count + ',\n';
+            }
+        }
+        body += '} }';
+
+        sendResponse(params, 200, body);
     }
 
     getDataCount(params, gotDataCountJson);
 }
 
 function getDataCountHtml(params) {
-    function gotDataCountHtml(rv) {
-        var body = '<ul>', status;
+    function gotDataCountHtml(cs, ks, err) {
+        var body = '<table><tbody>', status;
 
-        if (rv === null) {
+        if (err !== null) {
             sendResponse(params, 500, 'Could not fetch list counts');
             return;
         }
-        for (var it in rv) {
-            body += '<li>' + htmlEscape(it) + ' ' + rv[it] + '</li>\n';
+
+        if (cs !== null) {
+            for (var i = 0, len = cs.length; i < len; ++i) {
+                body += '<tr><td>' + cs[i].read_key + '</td><td>' + cs[i].count + '</td></tr>\n';
+            }
         }
-        body += '</ul>';
+        if (ks !== null) {
+            for (var i = 0, len = ks.length; i < len; ++i) {
+                body += '<tr><td>' + cs[i].fingerprint_alias + '</td><td>' + cs[i].count + '</td></tr>\n';
+            }
+        }
+        body += '</tbody></table>';
 
         sendResponse(params, 200, body);
     }
@@ -787,8 +869,7 @@ var places_exact = {
             { type: 'application/json', action: getDataCountJson },
             { type: 'text/plain', action: getDataCountPlain },
             { type: 'text/html', action: getDataCountHtml }
-        ],
-        'POST': postDataItem
+        ]
     },
 
     '/data': {
