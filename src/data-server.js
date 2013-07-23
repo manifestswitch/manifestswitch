@@ -584,9 +584,10 @@ function getDataItemPlain(params) {
             body = '410: Gone';
         } else {
             status = 200;
-            body = rv.content.toString('utf8');
+            body = rv.content;
         }
-        sendResponse(params, status, body);
+        params.contentType = 'text/plain; charset=utf-8';
+        sendRawResponse(params, status, body);
     }
     getDataItem(params.urlparts.pathname.substring('/data/'.length), gotDataItemPlain);
 }
