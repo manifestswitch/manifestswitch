@@ -244,9 +244,10 @@ function replaceEntities(chr) {
     return chr;
 }
 
+var entityRegex = /[&<>]/g;
+
 function htmlEscape(s) {
-    // FIXME: do the escaping!
-    return s.replace(/[&<>]/g, replaceEntities);
+    return s.replace(entityRegex, replaceEntities);
 }
 
 function htmlQuote(s) {
