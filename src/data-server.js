@@ -107,176 +107,6 @@ function getHomePagePlain(params) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/*
-
-&references=hash1,hash2&references=hash3 means contains (hash1 || hash2) && hash3
-
-If we want to get really meta, we could just return the hash of the
-text representing this list of items, and the user should call GET
-/data/$hash/ to see the list.
-
-A useful accompanyment to this call would be GET /size taking exactly
-the same parameters, to let us know how many items there are without
-having to scan through all of them.
-
-*/
-
-// max page size, just limit it to something of trivial cost to the server.
-var dataListLimit = 32;
-
-function getDataList(params, cont) {
-    var rv = [], first, count, rs = null, rsstr = null;
-    var query = url.parse(params.request.url, true).query;
-
-    function failResults(err) {
-        cont(null);
-    }
-
-    function gotResults(result) {
-        var source = result.rows;
-
-        if (first < 0) {
-            first = Math.max(0, source.length - count);
-            source = source.slice(first);
-        }
-        cont({ list: source.slice(0, count), total: first + source.length });
-    }
-
-    if ('references' in query) {
-        // TODO: change to "." character since that is not encoded
-        rs = query.references.split(',');
-
-        if (!looksLikeSha(rs[0])) {
-            cont(null);
-            return;
-        }
-        rsstr = "'" + rs[0] + "'";
-
-        for (var i = 1, rlen = rs.length; i < rlen; ++i) {
-            if (!looksLikeSha(rs[i])) {
-                cont(null);
-                return;
-            }
-            rsstr += ",'" + rs[i] + "'";
-        }
-    }
-
-    if ('count' in query) {
-        count = parseInt(query.count, 10);
-
-        if (count !== count) {
-            cont(null);
-            return;
-        } else if (count < 0) {
-            cont(null);
-            return;
-        }
-
-        if (count > dataListLimit) {
-            count = dataListLimit;
-        }
-
-    } else {
-        count = dataListLimit;
-    }
-
-    if ('first' in query) {
-        first = parseInt(query.first, 10);
-
-        if (first !== first) {
-            cont(null);
-            return;
-        } else if (first < 0) {
-            cont(null);
-            return;
-        }
-    } else {
-        first = -1;
-    }
-
-    if (rsstr === null) {
-        if (first < 0) {
-            ds_refers_query("SELECT pkey, sha256 FROM refers_hash ORDER BY pkey", [],
-                            gotResults, failResults);
-        } else {
-            ds_refers_query("SELECT pkey, sha256 FROM refers_hash ORDER BY pkey OFFSET $1", [first],
-                            gotResults, failResults);
-        }
-    } else {
-        if (first < 0) {
-            ds_refers_query("SELECT rh2.pkey, rh2.sha256 FROM refers as r, refers_hash AS rh1, refers_hash AS rh2 WHERE rh1.sha256 IN (" + rsstr + ") AND rh1.pkey=r.referree AND rh2.pkey=r.referrer ORDER BY r.pkey", [], gotResults, failResults);
-        } else {
-            ds_refers_query("SELECT rh2.pkey, rh2.sha256 FROM refers as r, refers_hash AS rh1, refers_hash AS rh2 WHERE rh1.sha256 IN (" + rsstr + ") AND rh1.pkey=r.referree AND rh2.pkey=r.referrer ORDER BY r.pkey OFFSET $1", [first], gotResults, failResults);
-        }
-    }
-}
-
-function getDataListPlain(params) {
-    function gotDataListPlain(rv) {
-        var body = '', status;
-
-        if (rv !== null) {
-            for (var i = 0, len = rv.list.length; i < len; ++i) {
-                body += rv.list[i].sha256 + '\n';
-            }
-            status = 200;
-            params.headers['X-Total'] = rv.total;
-        } else {
-            body = '400: Bad Request: Could not parse query parameters.';
-            status = 400;
-        }
-        sendResponse(params, status, body);
-    }
-    getDataList(params, gotDataListPlain);
-}
-
-function getDataListJson(params) {
-    function gotDataListJson(rv) {
-        var body = '{ "status": 200, "result": "OK", "items": [\n', status;
-
-        if (rv !== null) {
-            for (var i = 0, len = rv.list.length; i < len; ++i) {
-                body += '{ "hash": "' + rv.list[i].sha256 + '" },\n';
-            }
-            body += ']}\n';
-            status = 200;
-            params.headers['X-Total'] = rv.total;
-
-        } else {
-            body = '{ "status": 400, "result": "Bad Request", "code": 1, "message": "Could not parse query parameters." }';
-            status = 400;
-        }
-        sendResponse(params, status, body);
-    }
-    getDataList(params, gotDataListJson);
-}
-
-function getDataListHtml(params) {
-    function gotDataListHtml(rv) {
-        var body = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body><ol>\n', status;
-
-        if (rv !== null) {
-            for (var i = 0, len = rv.list.length; i < len; ++i) {
-                body += '<li><a class="hash" href="/data/' + rv.list[i].sha256 + '">' + rv.list[i].sha256 + '</a></li>\n';
-            }
-
-            body += '</ol>\n';
-            body += '<div><a href="/data/form">Add</a></div>';
-            body += '<div><a href="/">Home</a></div></body></html>';
-            status = 200;
-            params.headers['X-Total'] = rv.total;
-
-        } else {
-            body = '<h1>400: Bad Request: Could not parse query parameters.</h1><a href="/data">Continue</a>';
-            status = 400;
-        }
-        sendResponse(params, status, body);
-    }
-    getDataList(params, gotDataListHtml);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 function varstring(n) {
     var s;
     if (n === 0) {
@@ -303,6 +133,161 @@ function replaceB64(chr) {
 }
 
 var replaceB64Regex = /[_~-]/g;
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Will actually be less, either the 44 bytes of sha256 b64, or a fingerprint
+var readKeyMaxLength = 64;
+
+function keyOffsetsHash(cs) {
+    var key, off, len = cs.length, top = len - 1, rv = {};
+
+    // unencoded alternative chars are provided as aliases to
+    // base64 "/+=" chars
+    for (var i = 0; i < top; ++i) {
+        key = cs[i].replace(replaceB64Regex, replaceB64);
+        if (key.length > readKeyMaxLength) {
+            return null;
+        }
+        ++i;
+        off = parseInt(cs[i], 10);
+        if ((off !== off) || ((off + '') !== cs[i])) {
+            return null;
+        }
+        rv[key] = off;
+    }
+    if (i !== len) {
+        return null;
+    }
+
+    return rv;
+}
+
+// restricted to a level that results in about 64KB max response size
+var maxDataListCount = 256;
+// this must be less than maxDataListCount. It's restricted because
+// each key results in a separate db query
+var maxDataListKeys = 64;
+
+function nullableLength(x) {
+    return x === null ? 0 : x.length;
+}
+
+function getDataList(params, cont) {
+    var waiting = 0, cs_results = [], ks_results = [],
+    cs = null, ks = null, csh, ksh, bailed = false, numKeys, countPerKey;
+
+    function checkFinish() {
+        --waiting;
+        if (waiting !== 0) {
+            return;
+        }
+        cont(cs_results, ks_results, null);
+    }
+
+    function problem(err) {
+        if (!bailed) {
+            bailed = true;
+            cont(null, null, {reason:2});
+        }
+    }
+
+    function gotChannelList(result) {
+        if (result.rows.length > 0) {
+            cs_results.push(result.rows);
+        }
+        checkFinish();
+    }
+
+    function gotFingerprintList(result) {
+        if (result.rows.length > 0) {
+            ks_results.push(result.rows);
+        }
+        checkFinish();
+    }
+
+    var query = url.parse(params.request.url, true).query;
+
+    if (('c' in query) && (query.c !== '')) {
+        cs = query.c.split('.');
+    }
+    if (('k' in query) && (query.k !== '')) {
+        ks = query.k.split('.');
+    }
+
+    if ((cs === null) && (ks === null)) {
+        cont(null, null, {reason:1});
+        return;
+    }
+
+    if (cs !== null) {
+        csh = keyOffsetsHash(cs);
+    }
+    if (ks !== null) {
+        ksh = keyOffsetsHash(ks);
+    }
+
+    numKeys = Math.floor((nullableLength(cs) + nullableLength(ks)) / 2);
+
+    if (numKeys > maxDataListKeys) {
+        cont(null, null, {reason:3});
+        return;
+    }
+
+    countPerKey = Math.floor(maxDataListCount / numKeys);
+
+    // XXX: will need to spawn one query request per read_key we're
+    // interested in.
+
+    if (cs !== null) {
+        for (var it in csh) {
+            ++waiting;
+            ds_refers_query("SELECT ''||$1 AS read_key,rh.sha256 FROM channel_content AS cc, read_keys AS rk, refers_hash AS rh WHERE rk.read_key=$1 AND cc.read_key=rk.pkey AND cc.hash=rh.pkey ORDER BY cc.pkey OFFSET $2 LIMIT $3",
+                            [it, csh[it], csh[it] + countPerKey],
+                            gotChannelList, problem);
+        }
+    }
+
+    if (ks !== null) {
+        for (var it in ksh) {
+            ++waiting;
+            ds_refers_query("SELECT ''||$1 AS fingerprint,rh.sha256 FROM fingerprint_content AS fc, fingerprint_alias AS fa, refers_hash AS rh WHERE fa.fingerprint=$1 AND fc.fingerprint_alias=fa.pkey AND fc.hash=rh.pkey ORDER BY fc.pkey OFFSET $2 LIMIT $3",
+                            [it, ksh[it], ksh[it] + countPerKey],
+                            gotFingerprintList, problem);
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+function getDataListPlain(params) {
+    function gotDataListPlain(cs, ks, err) {
+        var body = '', status;
+
+        if (err !== null) {
+            sendResponse(params, 500, 'Could not fetch list');
+            return;
+        }
+
+        for (var i = 0, len = cs.length; i < len; ++i) {
+            body += 'c ' + cs[i][0].read_key + '\n';
+            for (var j = 0, jlen = cs[i].length; j < jlen; ++j) {
+                body += cs[i][j].sha256 + '\n';
+            }
+        }
+        for (var i = 0, len = ks.length; i < len; ++i) {
+            body += 'k ' + ks[i][0].fingerprint + '\n';
+            for (var j = 0, jlen = ks[i].length; j < jlen; ++j) {
+                body += ks[i][j].sha256 + '\n';
+            }
+        }
+
+        sendResponse(params, 200, body);
+    }
+    getDataList(params, gotDataListPlain);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 function getDataCount(params, cont) {
     var waiting = 0, cs_result = null, ks_result = null, cs = null, ks = null, bailed = false;
@@ -369,6 +354,10 @@ function getDataCount(params, cont) {
                         gotFingerprintCounts, problem);
     }
 }
+
+// TODO: The entries should probably be sorted either alphabetically
+// or by the order given in the query string, to prevent leaking info
+// about their add date
 
 function getDataCountPlain(params) {
     function gotDataCountPlain(cs, ks, err) {
@@ -874,9 +863,7 @@ var places_exact = {
 
     '/data': {
         'GET': [
-            { type: 'application/json', action: getDataListJson },
-            { type: 'text/plain', action: getDataListPlain },
-            { type: 'text/html', action: getDataListHtml }
+            { type: 'text/plain', action: getDataListPlain }
         ],
         'POST': postDataItem
     },
