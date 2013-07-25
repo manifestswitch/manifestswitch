@@ -484,7 +484,7 @@ function getDataFormHtml(params) {
 // FIXME: implement upload quotas. Each IP address can only upload a
 // certain amount of data per day, and a max size for each upload.
 function postDataItem(params) {
-    var shasum, contentSize = 0, contentParts = [], content = null, hex, references,
+    var shasum, contentSize = 0, contentParts = [], content = null, hex,
     c = null, k = null, hashPkey, rsha, read_key = '', rpkey;
 
     function finis() {
