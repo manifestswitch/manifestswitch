@@ -8,7 +8,7 @@
 CREATE TABLE content (
        pkey serial, -- PRIMARY KEY;
        -- remember, this will not necessarily always be unique
-       sha256 text, -- char (64) INDEX NOT NULL;
+       sha256 bytea, -- (32) INDEX NOT NULL;
        content bytea, -- NOT NULL UNIQUE;
        -- if for any reason it is later removed
        gone boolean -- NOT NULL;

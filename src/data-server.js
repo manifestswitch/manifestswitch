@@ -139,13 +139,25 @@ var replaceB64Regex = /[_~-]/g;
 // Will actually be less, either the 44 bytes of sha256 b64, or a fingerprint
 var readKeyMaxLength = 64;
 
-function keyOffsetsHash(cs) {
+var fingerRegex = /^[0-9A-F]+$/;
+
+function keyOffsetsHash(cs, isB64) {
     var key, off, len = cs.length, top = len - 1, rv = { err: 0 };
 
     // unencoded alternative chars are provided as aliases to
     // base64 "/+=" chars
     for (var i = 0; i < top; ++i) {
-        key = cs[i].replace(replaceB64Regex, replaceB64);
+        if (isB64) {
+            key = new Buffer(cs[i].replace(replaceB64Regex, replaceB64), 'base64').toString('hex');
+            if (key === '') {
+                return { err: 7 };
+            }
+        } else {
+            key = cs[i];
+            if (key.match(fingerRegex) === null) {
+                return { err: 8 };
+            }
+        }
         if (key.length > readKeyMaxLength) {
             return { err: 1 };
         }
@@ -221,14 +233,14 @@ function getDataList(params, cont) {
     }
 
     if (cs !== null) {
-        csh = keyOffsetsHash(cs);
+        csh = keyOffsetsHash(cs, true);
         if (csh.err !== 0) {
             cont(null, null, {reason:csh.err});
             return;
         }
     }
     if (ks !== null) {
-        ksh = keyOffsetsHash(ks);
+        ksh = keyOffsetsHash(ks, false);
         if (ksh.err !== 0) {
             cont(null, null, {reason:ksh.err});
             return;
@@ -249,18 +261,24 @@ function getDataList(params, cont) {
 
     if (cs !== null) {
         for (var it in csh) {
+            if (it === 'err') {
+                continue;
+            }
             ++waiting;
-            ds_refers_query("SELECT ''||$1 AS read_key,rh.sha256 FROM channel_content AS cc, read_keys AS rk, refers_hash AS rh WHERE rk.read_key=$1 AND cc.read_key=rk.pkey AND cc.hash=rh.pkey ORDER BY cc.pkey OFFSET $2 LIMIT $3",
-                            [it, csh[it], csh[it] + countPerKey],
+            ds_refers_query("SELECT '" + (new Buffer(it, 'hex')).toString('base64') + "' AS read_key,rh.sha256 FROM channel_content AS cc, read_keys AS rk, refers_hash AS rh WHERE rk.read_key=$1 AND cc.read_key=rk.pkey AND cc.hash=rh.pkey ORDER BY cc.pkey OFFSET $2 LIMIT $3",
+                            ['\\x' + it, csh[it], csh[it] + countPerKey],
                             gotChannelList, problem);
         }
     }
 
     if (ks !== null) {
         for (var it in ksh) {
+            if (it === 'err') {
+                continue;
+            }
             ++waiting;
-            ds_refers_query("SELECT ''||$1 AS fingerprint,rh.sha256 FROM fingerprint_content AS fc, fingerprint_alias AS fa, refers_hash AS rh WHERE fa.fingerprint=$1 AND fc.fingerprint_alias=fa.pkey AND fc.hash=rh.pkey ORDER BY fc.pkey OFFSET $2 LIMIT $3",
-                            [it, ksh[it], ksh[it] + countPerKey],
+            ds_refers_query("SELECT '" + it + "' AS fingerprint,rh.sha256 FROM fingerprint_content AS fc, fingerprint_alias AS fa, refers_hash AS rh WHERE fa.fingerprint=$1 AND fc.fingerprint_alias=fa.pkey AND fc.hash=rh.pkey ORDER BY fc.pkey OFFSET $2 LIMIT $3",
+                            ['\\x' + it, ksh[it], ksh[it] + countPerKey],
                             gotFingerprintList, problem);
         }
     }
@@ -280,13 +298,13 @@ function getDataListPlain(params) {
         for (var i = 0, len = cs.length; i < len; ++i) {
             body += 'c ' + cs[i][0].read_key + '\n';
             for (var j = 0, jlen = cs[i].length; j < jlen; ++j) {
-                body += cs[i][j].sha256 + '\n';
+                body += cs[i][j].sha256.toString('hex') + '\n';
             }
         }
         for (var i = 0, len = ks.length; i < len; ++i) {
             body += 'k ' + ks[i][0].fingerprint + '\n';
             for (var j = 0, jlen = ks[i].length; j < jlen; ++j) {
-                body += ks[i][j].sha256 + '\n';
+                body += ks[i][j].sha256.toString('hex') + '\n';
             }
         }
 
@@ -325,20 +343,29 @@ function getDataCount(params, cont) {
         checkFinish();
     }
 
-    var query = url.parse(params.request.url, true).query;
+    var query = url.parse(params.request.url, true).query, key;
 
     if (('c' in query) && (query.c !== '')) {
         cs = query.c.split('.');
         // unencoded alternative chars are provided as aliases to
         // base64 "/+=" chars
         for (var i = 0, len = cs.length; i < len; ++i) {
-            cs[i] = cs[i].replace(replaceB64Regex, replaceB64);
+            key = new Buffer(cs[i].replace(replaceB64Regex, replaceB64), 'base64').toString('hex');
+            if (key === '') {
+                return { reason: 3 };
+            }
+            cs[i] = '\\x' + key;
         }
     }
+
     if (('k' in query) && (query.k !== '')) {
         ks = query.k.split('.');
         for (var i = 0, len = ks.length; i < len; ++i) {
-            ks[i] = ks[i].replace(replaceB64Regex, replaceB64);
+            key = ks[i];
+            if (key.match(fingerRegex) === null) {
+                return { err: 4 };
+            }
+            ks[i] = '\\x' + key;
         }
     }
 
@@ -363,6 +390,13 @@ function getDataCount(params, cont) {
     }
 }
 
+function formatReadKey(buf) {
+    return buf.toString('base64');
+}
+function formatFingerprint(buf) {
+    return buf.toString('hex').toUpperCase();
+}
+
 // TODO: The entries should probably be sorted either alphabetically
 // or by the order given in the query string, to prevent leaking info
 // about their add date
@@ -378,12 +412,12 @@ function getDataCountPlain(params) {
 
         if (cs !== null) {
             for (var i = 0, len = cs.length; i < len; ++i) {
-                body += cs[i].read_key + ' ' + cs[i].count + '\n';
+                body += formatReadKey(cs[i].read_key) + ' ' + cs[i].count + '\n';
             }
         }
         if (ks !== null) {
             for (var i = 0, len = ks.length; i < len; ++i) {
-                body += cs[i].fingerprint_alias + ' ' + cs[i].count + '\n';
+                body += formatFingerprint(cs[i].fingerprint_alias) + ' ' + cs[i].count + '\n';
             }
         }
 
@@ -404,12 +438,12 @@ function getDataCountJson(params) {
         body = '{ "status": 200, "result": "OK", "counts": {';
         if (cs !== null) {
             for (var i = 0, len = cs.length; i < len; ++i) {
-                body += '"' + cs[i].read_key + '": ' + cs[i].count + ',\n';
+                body += '"' + formatReadKey(cs[i].read_key) + '": ' + cs[i].count + ',\n';
             }
         }
         if (ks !== null) {
             for (var i = 0, len = ks.length; i < len; ++i) {
-                body += '"' + cs[i].fingerprint_alias + '": ' + cs[i].count + ',\n';
+                body += '"' + formatFingerprint(cs[i].fingerprint_alias) + '": ' + cs[i].count + ',\n';
             }
         }
         body += '} }';
@@ -431,12 +465,12 @@ function getDataCountHtml(params) {
 
         if (cs !== null) {
             for (var i = 0, len = cs.length; i < len; ++i) {
-                body += '<tr><td>' + cs[i].read_key + '</td><td>' + cs[i].count + '</td></tr>\n';
+                body += '<tr><td>' + formatReadKey(cs[i].read_key) + '</td><td>' + cs[i].count + '</td></tr>\n';
             }
         }
         if (ks !== null) {
             for (var i = 0, len = ks.length; i < len; ++i) {
-                body += '<tr><td>' + cs[i].fingerprint_alias + '</td><td>' + cs[i].count + '</td></tr>\n';
+                body += '<tr><td>' + formatFingerprint(cs[i].fingerprint_alias) + '</td><td>' + cs[i].count + '</td></tr>\n';
             }
         }
         body += '</tbody></table>';
@@ -522,12 +556,12 @@ function postDataItem(params) {
     }
 
     function insertedRefersHash(result) {
-        ds_refers_query("SELECT pkey FROM refers_hash WHERE sha256=$1", [hex],
+        ds_refers_query("SELECT pkey FROM refers_hash WHERE sha256=$1", ['\\x' + hex],
                         selectedRefersHash, problem);
     }
 
     function insertedContent(result) {
-        ds_refers_query("INSERT INTO refers_hash (sha256) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM refers_hash WHERE sha256=$1)", [hex],
+        ds_refers_query("INSERT INTO refers_hash (sha256) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM refers_hash WHERE sha256=$1)", ['\\x' + hex],
                         insertedRefersHash, problem);
     }
 
@@ -540,7 +574,7 @@ function postDataItem(params) {
         }
 
         ds_content_query("INSERT INTO content (sha256, content, gone) SELECT $1, $2, false WHERE NOT EXISTS (SELECT 1 FROM content WHERE sha256=$1)",
-                         [hex, '\\x' + content.toString('hex')],
+                         ['\\x' + hex, '\\x' + content.toString('hex')],
                          insertedContent, problem);
     }
 
@@ -569,13 +603,13 @@ function postDataItem(params) {
 
     function insertedReadPkey(result) {
         ds_refers_query('SELECT pkey FROM read_keys WHERE read_key=$1',
-                        [read_key],
+                        ['\\x' + read_key],
                         gotReadPkey, problem);
     }
 
     function rshaEnd() {
         ds_refers_query('INSERT INTO read_keys (read_key) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM read_keys WHERE read_key=$1)',
-                        [read_key],
+                        ['\\x' + read_key],
                         insertedReadPkey, problem);
     }
 
@@ -586,11 +620,12 @@ function postDataItem(params) {
 
     function postDataItemEnd() {
         content = Buffer.concat(contentParts);
+        contentParts = null;
 
         if (c !== null) {
             // sha256 c into base64
             rsha = crypto.createHash('sha256');
-            rsha.setEncoding('base64');
+            rsha.setEncoding('hex');
             rsha.on('readable', rshaRead);
             rsha.on('end', rshaEnd);
             if (c !== '') {
@@ -648,7 +683,7 @@ function getDataItem(hash, cb) {
         cb(result.rows[0]);
     }
 
-    ds_content_query("SELECT content FROM content WHERE sha256='" + hash + "' LIMIT 1", [], selectContinue, selectFail);
+    ds_content_query("SELECT content FROM content WHERE sha256='\\x" + hash + "' LIMIT 1", [], selectContinue, selectFail);
 }
 
 // TODO: support Range header
@@ -737,7 +772,7 @@ function getDataResult(params, cont) {
         return;
     }
 
-    ds_content_query("SELECT content FROM content WHERE sha256='" + query.sha256 + "'", [],
+    ds_content_query("SELECT content FROM content WHERE sha256='\\x" + query.sha256 + "'", [],
                      gotDataResult, failDataResult);
 }
 

@@ -8,7 +8,7 @@
 -- give every hash a pkey in this database
 CREATE TABLE refers_hash (
        pkey serial, -- PRIMARY KEY;
-       sha256 text -- char (64) INDEX NOT NULL;
+       sha256 bytea -- (32) INDEX NOT NULL;
 );
 CREATE INDEX refers_hash_pkey ON refers_hash (pkey);
 CREATE INDEX refers_hash_sha256 ON refers_hash (sha256);
@@ -38,7 +38,7 @@ CREATE INDEX refers_referree ON refers (referree);
 -- Just deduplicates the read_key text
 CREATE TABLE read_keys (
        pkey serial, -- PRIMARY KEY;
-       read_key text
+       read_key bytea
 );
 CREATE INDEX read_keys_pkey ON read_keys (pkey);
 CREATE INDEX read_keys_read_key ON read_keys (read_key);
@@ -59,7 +59,7 @@ CREATE INDEX channel_content_read_key_hash ON channel_content (read_key, hash);
 CREATE TABLE fingerprint_alias (
        pkey serial, -- PRIMARY KEY;
        write_key text,
-       fingerprint text
+       fingerprint bytea
 );
 CREATE INDEX fingerprint_alias_pkey ON fingerprint_alias (pkey);
 CREATE INDEX fingerprint_alias_write_key ON fingerprint_alias (write_key);
