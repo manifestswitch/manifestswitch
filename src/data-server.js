@@ -140,24 +140,24 @@ var replaceB64Regex = /[_~-]/g;
 var readKeyMaxLength = 64;
 
 function keyOffsetsHash(cs) {
-    var key, off, len = cs.length, top = len - 1, rv = {};
+    var key, off, len = cs.length, top = len - 1, rv = { err: 0 };
 
     // unencoded alternative chars are provided as aliases to
     // base64 "/+=" chars
     for (var i = 0; i < top; ++i) {
         key = cs[i].replace(replaceB64Regex, replaceB64);
         if (key.length > readKeyMaxLength) {
-            return null;
+            return { err: 1 };
         }
         ++i;
         off = parseInt(cs[i], 10);
         if ((off !== off) || ((off + '') !== cs[i])) {
-            return null;
+            return { err: 2 };
         }
         rv[key] = off;
     }
     if (i !== len) {
-        return null;
+        return { err: 3 };
     }
 
     return rv;
@@ -188,7 +188,7 @@ function getDataList(params, cont) {
     function problem(err) {
         if (!bailed) {
             bailed = true;
-            cont(null, null, {reason:2});
+            cont(null, null, {reason:6});
         }
     }
 
@@ -216,21 +216,29 @@ function getDataList(params, cont) {
     }
 
     if ((cs === null) && (ks === null)) {
-        cont(null, null, {reason:1});
+        cont(null, null, {reason:4});
         return;
     }
 
     if (cs !== null) {
         csh = keyOffsetsHash(cs);
+        if (csh.err !== 0) {
+            cont(null, null, {reason:csh.err});
+            return;
+        }
     }
     if (ks !== null) {
         ksh = keyOffsetsHash(ks);
+        if (ksh.err !== 0) {
+            cont(null, null, {reason:ksh.err});
+            return;
+        }
     }
 
     numKeys = Math.floor((nullableLength(cs) + nullableLength(ks)) / 2);
 
     if (numKeys > maxDataListKeys) {
-        cont(null, null, {reason:3});
+        cont(null, null, {reason:5});
         return;
     }
 
