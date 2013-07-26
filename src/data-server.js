@@ -265,7 +265,7 @@ function getDataList(params, cont) {
                 continue;
             }
             ++waiting;
-            ds_refers_query("SELECT '" + (new Buffer(it, 'hex')).toString('base64') + "' AS read_key,rh.sha256 FROM channel_content AS cc, read_keys AS rk, refers_hash AS rh WHERE rk.read_key=$1 AND cc.read_key=rk.pkey AND cc.hash=rh.pkey ORDER BY cc.pkey OFFSET $2 LIMIT $3",
+            ds_refers_query("SELECT '" + (new Buffer(it, 'hex')).toString('base64') + "' AS read_key,cc.sha256 FROM channel_content AS cc, read_keys AS rk WHERE rk.read_key=$1 AND cc.read_key=rk.pkey ORDER BY cc.pkey OFFSET $2 LIMIT $3",
                             ['\\x' + it, csh[it], csh[it] + countPerKey],
                             gotChannelList, problem);
         }
@@ -277,7 +277,7 @@ function getDataList(params, cont) {
                 continue;
             }
             ++waiting;
-            ds_refers_query("SELECT '" + it + "' AS fingerprint,rh.sha256 FROM fingerprint_content AS fc, fingerprint_alias AS fa, refers_hash AS rh WHERE fa.fingerprint=$1 AND fc.fingerprint_alias=fa.pkey AND fc.hash=rh.pkey ORDER BY fc.pkey OFFSET $2 LIMIT $3",
+            ds_refers_query("SELECT '" + it + "' AS fingerprint,fc.sha256 FROM fingerprint_content AS fc, fingerprint_alias AS fa WHERE fa.fingerprint=$1 AND fc.fingerprint_alias=fa.pkey ORDER BY fc.pkey OFFSET $2 LIMIT $3",
                             ['\\x' + it, ksh[it], ksh[it] + countPerKey],
                             gotFingerprintList, problem);
         }
@@ -541,28 +541,16 @@ function postDataItem(params) {
         finis();
     }
 
-    function selectedRefersHash(result) {
-        hashPkey = result.rows[0].pkey;
-
+    function insertedContent(result) {
         if (c !== null) {
-            ds_refers_query('INSERT INTO channel_content (read_key, hash) SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM channel_content WHERE read_key=$1 AND hash=$2)',
-                            [rpkey, hashPkey],
+            ds_refers_query('INSERT INTO channel_content (read_key, sha256) SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM channel_content WHERE read_key=$1 AND sha256=$2)',
+                            [rpkey, '\\x' + hex],
                             insertedChannelContent, problem);
         } else {
-            ds_refers_query('INSERT INTO fingerprint_content (fingerprint_alias, hash) SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM fingerprint_content WHERE fingerprint_alias=$1 AND hash=$2)',
-                            [rpkey, hashPkey],
+            ds_refers_query('INSERT INTO fingerprint_content (fingerprint_alias, sha256) SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM fingerprint_content WHERE fingerprint_alias=$1 AND sha256=$2)',
+                            [rpkey, '\\x' + hex],
                             insertedChannelContent, problem);
         }
-    }
-
-    function insertedRefersHash(result) {
-        ds_refers_query("SELECT pkey FROM refers_hash WHERE sha256=$1", ['\\x' + hex],
-                        selectedRefersHash, problem);
-    }
-
-    function insertedContent(result) {
-        ds_refers_query("INSERT INTO refers_hash (sha256) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM refers_hash WHERE sha256=$1)", ['\\x' + hex],
-                        insertedRefersHash, problem);
     }
 
     function shasumRead() {
