@@ -641,13 +641,6 @@ function postDataItem(params) {
 
         trace(Date.now() + ' ' + 'got data');
 
-        shasum = crypto.createHash('sha256');
-        shasum.setEncoding('hex');
-        shasum.on('readable', shasumRead);
-
-        if (content.length > 0) {
-            shasum.write(content);
-        }
         shasum.end();
     }
 
@@ -660,6 +653,9 @@ function postDataItem(params) {
                 aborted = true;
                 sendResponse(params, 400, 'Maximum input is 4096 bytes');
                 return;
+            }
+            if (ch.length > 0) {
+                shasum.write(ch);
             }
             contentParts.push(ch);
         }
@@ -705,6 +701,10 @@ function postDataItem(params) {
                         [k],
                         gotFingerprintAlias, problem);
     }
+
+    shasum = crypto.createHash('sha256');
+    shasum.setEncoding('hex');
+    shasum.on('readable', shasumRead);
 
     params.request.on('end', postDataItemEnd);
     params.request.on('readable', postDataItemData);
