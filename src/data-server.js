@@ -530,7 +530,7 @@ var read_key_cache = {};
 // FIXME: implement upload quotas. Each IP address can only upload a
 // certain amount of data per day, and a max size for each upload.
 function postDataItem(params) {
-    var shasum, contentSize = 0, contentParts = [], content = null, hex,
+    var shasum, contentSize = 0, hex, content = '\\x',
     c = null, k = null, hashPkey, rsha, read_key = '', rpkey, waiting = 2, waitingB = 2, aborted = false;
 
     function problem() {
@@ -590,8 +590,9 @@ function postDataItem(params) {
         trace(Date.now() + ' ' + 'got hex');
         checkContinueA();
         ds_content_query("INSERT INTO content (sha256, content, gone) SELECT $1, $2, false WHERE NOT EXISTS (SELECT 1 FROM content WHERE sha256=$1)",
-                         ['\\x' + hex, '\\x' + content.toString('hex')],
+                         ['\\x' + hex, content],
                          insertedContent, problem);
+        content = null;
     }
 
     function gotFingerprintAlias(result) {
@@ -636,11 +637,7 @@ function postDataItem(params) {
     }
 
     function postDataItemEnd() {
-        content = Buffer.concat(contentParts);
-        contentParts = null;
-
         trace(Date.now() + ' ' + 'got data');
-
         shasum.end();
     }
 
@@ -657,7 +654,7 @@ function postDataItem(params) {
             if (ch.length > 0) {
                 shasum.write(ch);
             }
-            contentParts.push(ch);
+            content += ch.toString('hex');
         }
     }
 
