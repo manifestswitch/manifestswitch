@@ -523,33 +523,59 @@ function getDataFormHtml(params) {
 // Note, should result in a valid 201 on success.
 // Or could do 202 to allow batching?
 
+// TODO: some kind of expiry / max size limit
+// write_key -> read_pkey
+var read_key_cache = {};
+
 // FIXME: implement upload quotas. Each IP address can only upload a
 // certain amount of data per day, and a max size for each upload.
 function postDataItem(params) {
     var shasum, contentSize = 0, contentParts = [], content = null, hex,
-    c = null, k = null, hashPkey, rsha, read_key = '', rpkey;
-
-    function finis() {
-        redirectTo(params, '/data/result?sha256=' + hex + '&prestate=none');
-    }
+    c = null, k = null, hashPkey, rsha, read_key = '', rpkey, waiting = 2, waitingB = 2, aborted = false;
 
     function problem() {
+        aborted = true;
         sendResponse(params, 500, 'Could not insert data');
     }
 
+    // This is a barrier on both the content and its hash in the
+    // channel list having been written.
+    function checkContinueB() {
+        if (aborted) {
+            return;
+        }
+        --waitingB;
+        if (waitingB === 0) {
+            redirectTo(params, '/data/result?sha256=' + hex + '&prestate=none');
+        }
+    }
+
     function insertedChannelContent(result) {
-        finis();
+        trace(Date.now() + ' ' + 'inserted channel entry');
+        checkContinueB();
     }
 
     function insertedContent(result) {
-        if (c !== null) {
-            ds_refers_query('INSERT INTO channel_content (read_key, sha256) SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM channel_content WHERE read_key=$1 AND sha256=$2)',
-                            [rpkey, '\\x' + hex],
-                            insertedChannelContent, problem);
-        } else {
-            ds_refers_query('INSERT INTO fingerprint_content (fingerprint_alias, sha256) SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM fingerprint_content WHERE fingerprint_alias=$1 AND sha256=$2)',
-                            [rpkey, '\\x' + hex],
-                            insertedChannelContent, problem);
+        trace(Date.now() + ' ' + 'inserted data');
+        checkContinueB();
+    }
+
+    // This is a barrier on having both the hash and the channel key
+    function checkContinueA() {
+        if (aborted) {
+            return;
+        }
+        --waiting;
+        if (waiting === 0) {
+            if (c !== null) {
+                ds_refers_query('INSERT INTO channel_content (read_key, sha256) SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM channel_content WHERE read_key=$1 AND sha256=$2)',
+                                [rpkey, '\\x' + hex],
+                                insertedChannelContent, problem);
+            } else {
+                ds_refers_query('INSERT INTO fingerprint_content (fingerprint_alias, sha256) SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM fingerprint_content WHERE fingerprint_alias=$1 AND sha256=$2)',
+                                [rpkey, '\\x' + hex],
+                                insertedChannelContent, problem);
+            }
         }
     }
 
@@ -561,12 +587,60 @@ function postDataItem(params) {
             return;
         }
 
+        trace(Date.now() + ' ' + 'got hex');
+        checkContinueA();
         ds_content_query("INSERT INTO content (sha256, content, gone) SELECT $1, $2, false WHERE NOT EXISTS (SELECT 1 FROM content WHERE sha256=$1)",
                          ['\\x' + hex, '\\x' + content.toString('hex')],
                          insertedContent, problem);
     }
 
-    function gotReadKeyContinue() {
+    function gotFingerprintAlias(result) {
+        trace(Date.now() + ' ' + 'got read pkey');
+        rpkey = result.rows[0].pkey;
+        checkContinueA()
+    }
+
+    function gotReadPkey(result) {
+        trace(Date.now() + ' ' + 'got read pkey');
+        rpkey = result.rows[0].pkey;
+        read_key_cache[c] = rpkey;
+        checkContinueA();
+    }
+
+    function insertedReadPkey(result) {
+        if (aborted) {
+            return;
+        }
+        trace(Date.now() + ' ' + 'inserted/ignored read key');
+        ds_refers_query('SELECT pkey FROM read_keys WHERE read_key=$1',
+                        ['\\x' + read_key],
+                        gotReadPkey, problem);
+    }
+
+    function rshaEnd() {
+        if (aborted) {
+            return;
+        }
+        trace(Date.now() + ' ' + 'got read key');
+        // is insert/ignore slow on bytea?
+        ds_refers_query('INSERT INTO read_keys (read_key) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM read_keys WHERE read_key=$1)',
+                        ['\\x' + read_key],
+                        insertedReadPkey, problem);
+    }
+
+    function rshaRead() {
+        var s = rsha.read();
+        if (s !== null) {
+            read_key += s;
+        }
+    }
+
+    function postDataItemEnd() {
+        content = Buffer.concat(contentParts);
+        contentParts = null;
+
+        trace(Date.now() + ' ' + 'got data');
+
         shasum = crypto.createHash('sha256');
         shasum.setEncoding('hex');
         shasum.on('readable', shasumRead);
@@ -577,63 +651,13 @@ function postDataItem(params) {
         shasum.end();
     }
 
-    function gotReadPkey(result) {
-        rpkey = result.rows[0].pkey;
-        gotReadKeyContinue();
-    }
-
-    function rshaRead() {
-        var s = rsha.read();
-        if (s !== null) {
-            read_key += s;
-        }
-    }
-
-    function insertedReadPkey(result) {
-        ds_refers_query('SELECT pkey FROM read_keys WHERE read_key=$1',
-                        ['\\x' + read_key],
-                        gotReadPkey, problem);
-    }
-
-    function rshaEnd() {
-        ds_refers_query('INSERT INTO read_keys (read_key) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM read_keys WHERE read_key=$1)',
-                        ['\\x' + read_key],
-                        insertedReadPkey, problem);
-    }
-
-    function gotFingerprintAlias(result) {
-        rpkey = result.rows[0].pkey;
-        gotReadKeyContinue();
-    }
-
-    function postDataItemEnd() {
-        content = Buffer.concat(contentParts);
-        contentParts = null;
-
-        if (c !== null) {
-            // sha256 c into base64
-            rsha = crypto.createHash('sha256');
-            rsha.setEncoding('hex');
-            rsha.on('readable', rshaRead);
-            rsha.on('end', rshaEnd);
-            if (c !== '') {
-                rsha.write(c);
-            }
-            rsha.end();
-        } else {
-            // select alias from table
-            ds_refers_query('SELECT pkey FROM fingerprint_alias WHERE write_key=$1',
-                            [k],
-                            gotFingerprintAlias, problem);
-        }
-    }
-
     function postDataItemData() {
         var ch = params.request.read();
         if (ch !== null) {
             contentSize += ch.length;
             // TODO: have a more intelligent quota check
             if (contentSize > 4096) {
+                aborted = true;
                 sendResponse(params, 400, 'Maximum input is 4096 bytes');
                 return;
             }
@@ -654,6 +678,32 @@ function postDataItem(params) {
     if ((c !== null) && (k !== null)) {
         sendResponse(params, 400, 'Please supply only one write token "c" or "k"');
         return;
+    }
+
+    trace(Date.now() + ' ' + 'start');
+
+    waiting = 2;
+    waitingB = 2;
+    if (c !== null) {
+        if (c in read_key_cache) {
+            rpkey = read_key_cache[c];
+            checkContinueA();
+        } else {
+            // sha256 c into base64
+            rsha = crypto.createHash('sha256');
+            rsha.setEncoding('hex');
+            rsha.on('readable', rshaRead);
+            rsha.on('end', rshaEnd);
+            if (c !== '') {
+                rsha.write(c);
+            }
+            rsha.end();
+        }
+    } else {
+        // select alias from table
+        ds_refers_query('SELECT pkey FROM fingerprint_alias WHERE write_key=$1',
+                        [k],
+                        gotFingerprintAlias, problem);
     }
 
     params.request.on('end', postDataItemEnd);
