@@ -7,7 +7,7 @@ printf 'building\n' >&2
 mkdir -p target
 python tools/jsmacro/jsmacro.py -f src/data-server.js | sed "s/_DS_REFERS_PASS_/`cat var/postgresql/ds_refers_pass.txt`/"  | sed "s/_DS_CONTENT_PASS_/`cat var/postgresql/ds_content_pass.txt`/" >target/data-server.jsmacro.js
 # TODO: don't base64 plain text, just quote the string contents
-python tools/jsmacro/jsmacro.py -f src/ui-server.js | sed "s#_UI_SERVER_JS_#new Buffer('`base64 -w 0 <src/resources/ui-server.js`','base64')#" | sed "s/_US_USERS_PASS_/`cat var/postgresql/us_users_pass.txt`/" | sed "s/_US_SESSIONS_PASS_/`cat var/postgresql/us_sessions_pass.txt`/" | sed "s/_US_KEYS_PASS_/`cat var/postgresql/us_keys_pass.txt`/" >target/ui-server.jsmacro.js
+python tools/jsmacro/jsmacro.py -f src/ui-server.js | sed "s#_UI_SERVER_JS_#new Buffer('`base64 -w 0 <src/resources/ui-server.js`','base64')#" | sed "s/_US_USERS_PASS_/`cat var/postgresql/us_users_pass.txt`/" | sed "s/_US_SESSIONS_PASS_/`cat var/postgresql/us_sessions_pass.txt`/" | sed "s/_US_KEYS_PASS_/`cat var/postgresql/us_keys_pass.txt`/" | sed "s/_US_NODES_PASS_/`cat var/postgresql/us_nodes_pass.txt`/" >target/ui-server.jsmacro.js
 
 printf 'built\n' >&2
 

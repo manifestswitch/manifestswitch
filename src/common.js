@@ -162,6 +162,7 @@ function trace(msg) {
 ////////////////////////////////////////////////////////////////////////////////
 /// BINARY utils
 
+var hashonly_re = /^([0-9a-f]{64})$/;
 var hash_re = /([0-9a-f]{64})/g;
 
 function isHexCode(ch) {
@@ -194,6 +195,43 @@ function getReferencedHashes(content) {
         r = hash_re.exec(content);
     }
     return hashes;
+}
+
+function replaceB64(chr) {
+    if (chr === '-') {
+        return '+';
+    }
+    if (chr === '_') {
+        return '/';
+    }
+    if (chr === '~') {
+        return '=';
+    }
+    return chr;
+}
+
+function unreplaceB64(chr) {
+    if (chr === '+') {
+        return '-';
+    }
+    if (chr === '/') {
+        return '_';
+    }
+    if (chr === '=') {
+        return '~';
+    }
+    return chr;
+}
+
+var replaceB64Regex = /[_~-]/g;
+var unreplaceB64Regex = /[\+\/=]/g;
+
+function strPosInt(x) {
+    var rv = parseInt(x, 10);
+    if ((rv !== rv) || ((rv + '') !== x)) {
+        return -1;
+    }
+    return rv;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

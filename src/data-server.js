@@ -119,27 +119,22 @@ function varstring(n) {
     return s;
 }
 
-function replaceB64(chr) {
-    if (chr === '-') {
-        return '+';
-    }
-    if (chr === '_') {
-        return '/';
-    }
-    if (chr === '~') {
-        return '=';
-    }
-    return chr;
-}
-
-var replaceB64Regex = /[_~-]/g;
-
 ////////////////////////////////////////////////////////////////////////////////
 
-// Will actually be less, either the 44 bytes of sha256 b64, or a fingerprint
-var readKeyMaxLength = 64;
+var fingerRegex = /^[0-9A-F]{40}$/;
+var shab64Regex = /^[0-9a-zA-Z_-]{43}~?$/;
+var ushab64Regex = /^[0-9a-zA-Z\/\+]{43}=?$/;
 
-var fingerRegex = /^[0-9A-F]+$/;
+function getB64Key(s) {
+    var key, buf;
+    if (s.match(shab64Regex) === null) {
+        return null;
+    }
+    if (s.length === 43) {
+        s += '=';
+    }
+    return (new Buffer(s.replace(replaceB64Regex, replaceB64), 'base64')).toString('hex');
+}
 
 function keyOffsetsHash(cs, isB64) {
     var key, off, len = cs.length, top = len - 1, rv = { err: 0 };
@@ -148,9 +143,9 @@ function keyOffsetsHash(cs, isB64) {
     // base64 "/+=" chars
     for (var i = 0; i < top; ++i) {
         if (isB64) {
-            key = new Buffer(cs[i].replace(replaceB64Regex, replaceB64), 'base64').toString('hex');
-            if (key === '') {
-                return { err: 7 };
+            key = getB64Key(cs[i]);
+            if (key === null) {
+                return { err: 9 };
             }
         } else {
             key = cs[i];
@@ -158,12 +153,9 @@ function keyOffsetsHash(cs, isB64) {
                 return { err: 8 };
             }
         }
-        if (key.length > readKeyMaxLength) {
-            return { err: 1 };
-        }
         ++i;
-        off = parseInt(cs[i], 10);
-        if ((off !== off) || ((off + '') !== cs[i])) {
+        off = strPosInt(cs[i]);
+        if (off < 0) {
             return { err: 2 };
         }
         rv[key] = off;
@@ -350,8 +342,8 @@ function getDataCount(params, cont) {
         // unencoded alternative chars are provided as aliases to
         // base64 "/+=" chars
         for (var i = 0, len = cs.length; i < len; ++i) {
-            key = new Buffer(cs[i].replace(replaceB64Regex, replaceB64), 'base64').toString('hex');
-            if (key === '') {
+            key = getB64Key(cs[i]);
+            if (key === null) {
                 return { reason: 3 };
             }
             cs[i] = '\\x' + key;
@@ -412,12 +404,12 @@ function getDataCountPlain(params) {
 
         if (cs !== null) {
             for (var i = 0, len = cs.length; i < len; ++i) {
-                body += formatReadKey(cs[i].read_key) + ' ' + cs[i].count + '\n';
+                body += 'c ' + formatReadKey(cs[i].read_key) + ' ' + cs[i].count + '\n';
             }
         }
         if (ks !== null) {
             for (var i = 0, len = ks.length; i < len; ++i) {
-                body += formatFingerprint(cs[i].fingerprint_alias) + ' ' + cs[i].count + '\n';
+                body += 'k ' + formatFingerprint(ks[i].fingerprint) + ' ' + ks[i].count + '\n';
             }
         }
 
@@ -435,15 +427,16 @@ function getDataCountJson(params) {
             return;
         }
 
-        body = '{ "status": 200, "result": "OK", "counts": {';
+        body = '{ "status": 200, "result": "OK", "keys": {';
         if (cs !== null) {
             for (var i = 0, len = cs.length; i < len; ++i) {
                 body += '"' + formatReadKey(cs[i].read_key) + '": ' + cs[i].count + ',\n';
             }
         }
+        body += '}, "fingerprints": {';
         if (ks !== null) {
             for (var i = 0, len = ks.length; i < len; ++i) {
-                body += '"' + formatFingerprint(cs[i].fingerprint_alias) + '": ' + cs[i].count + ',\n';
+                body += '"' + formatFingerprint(ks[i].fingerprint) + '": ' + ks[i].count + ',\n';
             }
         }
         body += '} }';
@@ -470,7 +463,7 @@ function getDataCountHtml(params) {
         }
         if (ks !== null) {
             for (var i = 0, len = ks.length; i < len; ++i) {
-                body += '<tr><td>' + formatFingerprint(cs[i].fingerprint_alias) + '</td><td>' + cs[i].count + '</td></tr>\n';
+                body += '<tr><td>' + formatFingerprint(ks[i].fingerprint) + '</td><td>' + ks[i].count + '</td></tr>\n';
             }
         }
         body += '</tbody></table>';
@@ -546,7 +539,16 @@ function postDataItem(params) {
         }
         --waitingB;
         if (waitingB === 0) {
-            redirectTo(params, '/data/result?sha256=' + hex + '&prestate=none');
+            params.contentType = preferredOutput(params.request.headers.accept,
+                                                 ['text/plain', 'application/json', 'text/html']);
+            if (params.contentType === 'text/plain') {
+                // this is beneficial for scripted programs to know
+                // immediately if the post was successful, without
+                // having to follow a redirect.
+                sendResponse(params, 200, hex);
+            } else {
+                redirectTo(params, '/data/result?sha256=' + hex + '&prestate=none');
+            }
         }
     }
 
@@ -561,6 +563,9 @@ function postDataItem(params) {
     }
 
     // This is a barrier on having both the hash and the channel key
+    // Arguably we should also wait until the content is inserted
+    // before inserting the channel content. Since anyone accessing
+    // will get 404 until then.
     function checkContinueA() {
         if (aborted) {
             return;
@@ -581,6 +586,10 @@ function postDataItem(params) {
 
     function shasumRead() {
         var alreadyHas = null, newdata;
+
+        if (aborted) {
+            return;
+        }
         hex = shasum.read(64);
 
         if (hex === null) {
@@ -596,6 +605,10 @@ function postDataItem(params) {
     }
 
     function gotFingerprintAlias(result) {
+        if (result.rows.length === 0) {
+            problem();
+            return;
+        }
         trace(Date.now() + ' ' + 'got read pkey');
         rpkey = result.rows[0].pkey;
         checkContinueA()
@@ -695,7 +708,7 @@ function postDataItem(params) {
     } else {
         // select alias from table
         ds_refers_query('SELECT pkey FROM fingerprint_alias WHERE write_key=$1',
-                        [k],
+                        ['\\x' + (new Buffer(k, 'base64')).toString('hex')],
                         gotFingerprintAlias, problem);
     }
 
@@ -1014,7 +1027,7 @@ var places_regex = [
         // same hash in the case of collision, this is not likely to
         // happen in the immediate future.
         //re: /\/data\/([0-9a-f]{64})\/entry\/[0-9]+/,
-        re: /\/data\/([0-9a-f]{64})/,
+        re: /^\/data\/([0-9a-f]{64})$/,
         methods: {
             'GET': [
                 // Only the text/plain represents the raw data -

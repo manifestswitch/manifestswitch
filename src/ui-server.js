@@ -178,22 +178,27 @@ var posted_by = {
 var us_users_conf = "postgres://us_users:_US_USERS_PASS_@localhost:5432/us_users";
 var us_pubkeyalias_conf = us_users_conf;
 var us_sessions_conf = "postgres://us_sessions:_US_SESSIONS_PASS_@localhost:5432/us_sessions";
-var us_keys_conf = "postgres://us_keys:_US_KEYS_PASS_@localhost:5432/us_keys";
+var us_keys_conf = us_users_conf;
+var us_nodes_conf = us_users_conf;
 
-function us_users_query(query, params, cb) {
-    perform_query(us_users_conf, query, params, cb, null);
+function us_users_query(query, params, cb, err) {
+    perform_query(us_users_conf, query, params, cb, err);
 }
 
-function us_pubkey_alias_query(query, params, cb) {
-    perform_query(us_pubkeyalias_conf, query, params, cb, null);
+function us_pubkey_alias_query(query, params, cb, err) {
+    perform_query(us_pubkeyalias_conf, query, params, cb, err);
 }
 
-function us_sessions_query(query, params, cb) {
-    perform_query(us_sessions_conf, query, params, cb, null);
+function us_sessions_query(query, params, cb, err) {
+    perform_query(us_sessions_conf, query, params, cb, err);
 }
 
-function us_keys_query(query, params, cb) {
-    perform_query(us_keys_conf, query, params, cb, null);
+function us_keys_query(query, params, cb, err) {
+    perform_query(us_keys_conf, query, params, cb, err);
+}
+
+function us_nodes_query(query, params, cb, err) {
+    perform_query(us_nodes_conf, query, params, cb, err);
 }
 
 
@@ -206,96 +211,20 @@ function userFollowList(username) {
     return follows_list[username];
 }
 
-// how far into a given stream we have processed. This works a bit
-// like a seek operation and allows us to only fetch those hashes
-// which have arrived since our last download.
-// TODO: what if we ever need to rewind due to an error? Redo the
-// whole stream?
-// FIXME: as above, if fetching an item fails we need a way to try
-// fetching again at some point, and an efficient way to note that
-// fetching it failed and we would like to reprocess anything that
-// depends on the data if we ever successfully download it.
-var offsets = {
-    // "https://example.org/data?references=...,...": 137
-};
+// username -> [read_key, ...]
+function userReadKeys(username, cont, contfail) {
+    // the read keys for each secret key we have.
+    // then just return those lists.
 
-var currentlyFetchingLists = {
-    // basePath: [handler,...]
-};
+}
 
-function getDataList(references, cont) {
-    // FIXME: at some point this request URI will become too large, as
-    // the number of people we are following grows above 50 or
-    // 60. This is an annoying problem to have because it is somewhat
-    // arbitrary.
-    // Possibly have /data?batch=$hash where $hash contains the
-    // requested hashes? The batch would be re-usable between
-    // requests, so this wouldn't massively spam the data-servers, but
-    // it would be less transient what kinds of hashes were being
-    // requested.
-    // An obvious alternative would be to just perform one API hit per
-    // reference, but this would mean hitting hundreds of URLs just to
-    // check if one had changed.
-    // Go with the batch solution for now.
-    var basePath = '/data?references=' + references.join('%2C');
-    var hostname = '127.0.0.1';
-    var source = hostname + basePath;
+// returns all the user's fingerprints, less their own.
+// username -> [fingerprint, ...]
+function userFingerprints(username, cont, contfail) {
+    // pubkey_alias holds a list of the user's 32bit keyids
+    // first, we need to fix so that it holds the full 160bit fingerprint:
+    // 899367D2 A6A5C175 3D724EEC 65280579 59DE2B30
 
-    // if the list is already being got, just register interest in the
-    // results
-    if (source in currentlyFetchingLists) {
-        currentlyFetchingLists[source].push(cont);
-        return;
-    }
-    currentlyFetchingLists[source] = [cont];
-
-    if (!(source in offsets)) {
-        offsets[source] = 0;
-    }
-
-    var options = {
-        hostname: hostname,
-        port: 7443,
-        path: basePath + '&first=' + offsets[source],
-        method: 'GET',
-        headers: { Accept: 'text/plain' }
-    };
-
-    if (hostname === '127.0.0.1') {
-        options.rejectUnauthorized = false;
-    }
-
-    var req = https.request(options, function(res) {
-        res.setEncoding('utf8');
-
-        var ch = '';
-        res.on('readable', function () {
-            var str = res.read();
-            if (str !== null) {
-                ch += str;
-            }
-        });
-        res.on('end', function () {
-            var ret;
-
-            if (ch === '') {
-                ret = [];
-            } else {
-                ret = getReferencedHashes(ch);
-            }
-            offsets[source] += ret.length;
-
-            var isEos = (!('x-total' in res.headers)) || (offsets[source] === parseInt(res.headers['x-total'], 10));
-
-            for (var i = 0, len = currentlyFetchingLists[source].length; i < len; ++i) {
-                currentlyFetchingLists[source][i](ret, isEos);
-            }
-            delete currentlyFetchingLists[source];
-        });
-    });
-
-    req.on('error', logError);
-    req.end();
 }
 
 var currentlyFetchingItems = {
@@ -397,7 +326,7 @@ function getDataCached(hash) {
     return hash in hashed_by ? (hashed_by[hash].length > 0 ? hashed_by[hash][0].content : null) : null;
 }
 
-function getDataItemAndIndex(hash, cont) {
+function getDataItemAndIndex(ctx, hash, cont) {
 
     function fetchedDataItem(hex, data) {
 
@@ -428,14 +357,14 @@ function getDataItemAndIndex(hash, cont) {
         }
 
         for (var i = 0, len = currentlyFetchingItemsToIndex[hex].length; i < len; ++i) {
-            currentlyFetchingItemsToIndex[hex][i](hex, data);
+            currentlyFetchingItemsToIndex[hex][i](ctx, hex, data);
         }
         delete currentlyFetchingItemsToIndex[hex];
     }
 
     if (hash in hashed_by) {
         //process.nextTick(cont);
-        cont(hash, getDataCached(hash));
+        cont(null, hash, getDataCached(hash));
         return;
     }
 
@@ -450,7 +379,6 @@ function getDataItemAndIndex(hash, cont) {
     getDataItem(hash, fetchedDataItem);
 }
 
-// Essentially just takes a wedge of the 
 function getReferencingHashesFromCache(referencing) {
     var rv = {};
     for (var i = 0, len = referencing.length; i < len; ++i) {
@@ -459,76 +387,638 @@ function getReferencingHashesFromCache(referencing) {
     return rv;
 }
 
-// this just streams across the references list attempting to download
-// each in turn.
-function updateReferencesGotListFn(stale, cont) {
+function offsetsMap(counts, offsets) {
+    var rv = null, offset;
 
-    var lists = [];
-    var waiting = 0;
-    var data_eos;
-
-    function fetchedDataItemIndexed(hex, data) {
-        --waiting;
-
-        if (waiting === 0) {
-            if (data_eos) {
-                cont(lists);
+    for (var sourcefull in counts) {
+        for (var key in counts[sourcefull]) {
+            var count = counts[sourcefull][key];
+            if (count === 0) {
+                delete counts[sourcefull][key];
+                continue;
+            }
+            if ((!(sourcefull in offsets)) || (!(key in offsets[sourcefull]))) {
+                offset = 0;
             } else {
-                getDataList(stale, gotList);
+                offset = offsets[sourcefull][key];
+                if (offset >= counts[sourcefull][key]) {
+                    delete counts[sourcefull][key];
+                    continue;
+                }
             }
+            if (rv === null) {
+                rv = {};
+            }
+            if (!(sourcefull in rv)) {
+                rv[sourcefull] = {};
+            }
+            rv[sourcefull][key] = offset
         }
     }
-
-    function gotList(data, eos) {
-        if (data.length === 0) {
-            if (!eos) {
-                async_log('WARN Got 0 data even though not eos');
-            }
-            cont(lists);
-            return;
-        }
-
-        lists.push(data);
-
-        data_eos = eos;
-        waiting = data.length;
-
-        // update our caches
-        for (var i = 0, len = data.length; i < len; ++i) {
-            var hex = data[i];
-            getDataItemAndIndex(hex, fetchedDataItemIndexed);
-        }
-    };
-
-    return gotList;
+    return rv;
 }
 
-function updateReferencingHashesCached(referencing, cont) {
-    var stale = [];
+// how far into a given stream we have processed. This works a bit
+// like a seek operation and allows us to only fetch those hashes
+// which have arrived since our last download.
+// TODO: what if we ever need to rewind due to an error? Redo the
+// whole stream?
+// FIXME: as above, if fetching an item fails we need a way to try
+// fetching again at some point, and an efficient way to note that
+// fetching it failed and we would like to reprocess anything that
+// depends on the data if we ever successfully download it.
+var csoffsets = {
+    // "https://example.org/data": { key1: N1, key2: N2, ... }
+};
+var ksoffsets = {
+    // "https://example.org/data": { key1: N1, key2: N2, ... }
+};
 
-    for (var i = 0, len = referencing.length; i < len; ++i) {
-        // TODO: filter fl down so that we only try to refetch if our
-        // cached data is older than say 1 second.
-        // If they're all under 1 second old, there's nothing to do.
-        if (true || referencesListIsStale(referencing[i])) {
-            stale.push(referencing[i]);
-        }
-    }
-
-    if (stale.length !== 0) {
-        getDataList(stale, updateReferencesGotListFn(stale, cont));
-    } else {
-        cont();
-    }
-}
+var currentlyFetchingLists = {
+    // basePath: [handler,...]
+};
 
 // for the currently logged in user, we would like to loop through
 // their peers, re-downloading all of the hashes of content that
 // person has ever potentially signed.
 // These posts are cached locally as user -> [content, ...]
-function refreshPeerContent(username, cont) {
-    var fl = userFollowList(username);
-    updateReferencingHashesCached(fl, cont);
+//
+// FIXME: This could get into trouble if two users fetch content for
+// the same key at once. Make the latter just wait for the former to
+// complete.
+//
+// One tricky part of the node info thing is making sure that if
+// A<-B<-C<-D and we see C and D first, we'll have
+// C:parent=B,root=null, D:parent=C,root=null When B arrives we need
+// to update C:root=A and therefore D:root=A
+// children = SELECT * WHERE parent=B
+// UPDATE children SET root=B.root
+// for c in children; repeat
+function refreshPeerContent(params, username, cont, failed) {
+    var waiting = 3, aborted = false, cs = null, ks = null, cscs, kscs, dwaiting = 0;
+    // TODO: at a minimum let the ui-server admin supply a list of 1
+    // or more data service URLs, fetching from all of them
+    var sources = [{ proto: 'https:', host: '127.0.0.1', port: 7443 }];
+    var sourcesfull = [sources[0].proto + '//' + sources[0].host + ':' + sources[0].port];
+    var cspointers = {}, kspointers = {};
+
+    // previously we would work back from the signed upvotes to a posted item, then get the posted item, and if it had a parent, record that.
+    // now we have
+
+    // all_child_posts of a parent (may be null):
+    // SELECT pkey FROM nodes WHERE parent=$2 AND isupvote=false AND ((signkey IN (SELECT primarykey FROM pubkey_alias WHERE username=$1) OR groupKey IN (SELECT secret FROM secrets_alias WHERE username=$1) OR (pkey IN (SELECT parent FROM nodes WHERE isupvote=true AND signkey IN (SELECT primarykey FROM pubkey_alias WHERE username=$1) OR groupKey IN (SELECT secret FROM secrets_alias WHERE username=$1)))))
+
+    function problem() {
+        failed();
+    }
+
+    function decAndCheck() {
+        --dwaiting;
+        if (dwaiting === 0) {
+            for (var source in cspointers) {
+                for (var c in cspointers[source]) {
+                    csoffsets[source][c] = cspointers[source][c];
+                }
+            }
+            for (var source in kspointers) {
+                for (var k in kspointers[source]) {
+                    ksoffsets[source][k] = kspointers[source][k];
+                }
+            }
+            cont();
+        }
+    }
+
+    // TODO: decrypt, learning keys along the way.
+    // What if the content is encrypted to a different user's public
+    // key?
+    // insert/ignore node info into the database.
+    function fetchedDataItemIndexed(ctx, hex, data) {
+        var groupKey = null, nodePkey, decrypt, sigfingerprint = null, shaPkey, upvoted, post, signkeyId;
+
+        function sqlFail(err) {
+            decAndCheck();
+        }
+
+        function insertedNotRecipient(result) {
+            decAndCheck();
+        }
+
+        function selectedOwnPubkeyHasPubEnc(result) {
+            var table = decrypt.gotPubDec ? 'recipients' : 'not_recipients';
+            us_nodes_query('INSERT INTO ' + table + ' (pubkey, node) SELECT $1,$2 WHERE NOT EXISTS (SELECT 1 FROM ' + table + ' WHERE node=$2)',
+                           [result.rows[0].pkey, nodePkey],
+                           insertedNotRecipient, sqlFail);
+        }
+
+        function selectedNodeHasPubEnc(result) {
+            nodePkey = result.rows[0].pkey;
+            us_nodes_query('SELECT pkey FROM pubkey_own WHERE username=$1',
+                           [username],
+                           selectedOwnPubkeyHasPubEnc, sqlFail);
+        }
+
+        function insertedNodeHasPubEnc(result) {
+            us_nodes_query('SELECT pkey FROM nodes WHERE sha256=$1',
+                           [shaPkey],
+                           selectedNodeHasPubEnc, sqlFail);
+        }
+
+        function insertedUpvoteNode(result) {
+            if ((result.rowCount === 0) && (sigfingerprint !== null)) {
+                // UPDATE nodes SET signkey=$1 WHERE sha256=$2
+            }
+            if (decrypt.isPubEnc) {
+                insertedNodeHasPubEnc();
+                return;
+            }
+            decAndCheck();
+        }
+
+        function insertedPostNode(result) {
+            if ((result.rowCount === 0) && (sigfingerprint !== null)) {
+                // UPDATE nodes SET signkey=$1 WHERE sha256=$2
+            }
+            if (decrypt.isPubEnc) {
+                insertedNodeHasPubEnc();
+                return;
+            }
+            decAndCheck();
+        }
+
+        function insertedPlainNode(result) {
+            if ((result.rowCount === 0) && (sigfingerprint !== null)) {
+                // UPDATE nodes SET signkey=$1 WHERE sha256=$2
+            }
+            if (decrypt.isPubEnc) {
+                insertedNodeHasPubEnc();
+                return;
+            }
+            decAndCheck();
+        }
+
+        function gotUpvotedShaPkey(result) {
+            us_nodes_query('INSERT INTO nodes (sha256, isPubEnc, groupkey, signkeyId, signKey, parent, root, isupvote) SELECT $1,$2,$3,$4,$5,$6,null,true WHERE NOT EXISTS (SELECT 1 FROM nodes WHERE sha256=$1)',
+                           [shaPkey, decrypt.isPubEnc, decrypt.symKeyPkey, signkeyId, sigfingerprint, result.rows[0].pkey],
+                           insertedUpvoteNode, sqlFail);
+        }
+
+        function gotPostShaPkey(result) {
+            us_nodes_query('INSERT INTO nodes (sha256, isPubEnc, groupkey, signkeyId, signKey, parent, root, isupvote) SELECT $1,$2,$3,$4,$5,$6,null,$7 WHERE NOT EXISTS (SELECT 1 FROM nodes WHERE sha256=$1)',
+                           [shaPkey, decrypt.isPubEnc, decrypt.symKeyPkey, signkeyId, sigfingerprint, result.rows[0].pkey,
+                            (!decrypt.isPubEnc || decrypt.gotPubDec) && (!decrypt.isSymEnc || decrypt.symKey !== null) ? false : null],
+                           insertedPostNode, sqlFail);
+        }
+
+        function insertedUpvoteSha(result) {
+            us_users_query('SELECT pkey FROM sha256 WHERE sha256=$1',
+                           ['\\x' + upvoted],
+                           gotUpvotedShaPkey, sqlFail);
+        }
+
+        function insertedPostSha(result) {
+            us_users_query('SELECT pkey FROM sha256 WHERE sha256=$1',
+                           ['\\x' + post],
+                           gotPostShaPkey, sqlFail);
+        }
+
+        function primarykeyContinue() {
+            signkeyId = decrypt.signkeyId === null ? null : '\\x' + decrypt.signkeyId;
+            upvoted = getUpvoteFromData(decrypt.data);
+
+            if (upvoted !== null) {
+                us_users_query('INSERT INTO sha256 (sha256) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM sha256 WHERE sha256=$1)',
+                               ['\\x' + upvoted],
+                               insertedUpvoteSha, sqlFail);
+            } else {
+                post = getPostFromData(decrypt.data);
+
+                if (post !== null) {
+                    us_users_query('INSERT INTO sha256 (sha256) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM sha256 WHERE sha256=$1)',
+                                   ['\\x' + post],
+                                   insertedPostSha, sqlFail);
+
+                } else {
+                    // could just be some plain text
+                    us_nodes_query('INSERT INTO nodes (sha256, isPubEnc, groupkey, signkeyId, signKey, parent, root, isupvote) SELECT $1,$2,$3,$4,$5,null,null,false WHERE NOT EXISTS (SELECT 1 FROM nodes WHERE sha256=$1)',
+                                   [shaPkey, decrypt.isPubEnc, decrypt.symKeyPkey, signkeyId, sigfingerprint],
+                                   insertedPlainNode, sqlFail);
+                }
+            }
+        }
+
+        function selectedPrimarykey(result) {
+            sigfingerprint = result.rows[0].pkey;
+            primarykeyContinue();
+        }
+
+        function insertedPrimarykey(result) {
+            us_users_query('SELECT pkey FROM primarykey WHERE fingerprint=$1',
+                           ['\\x' + decrypt.sigfinger],
+                           selectedPrimarykey, sqlFail);
+        }
+
+        function selectedShaPkey(result) {
+            shaPkey = result.rows[0].pkey
+
+            // FIXME: at this point, if it is a public key, or a ~key
+            // item, and signed by a key we trust, or is posted in a
+            // group we follow, add it to our keyring
+            /* Looks something like
+               if (gotGroupKey || signatureValid) { if (decrypt.hasPubKey || getGroupKeyFromData(decrypt.data)) { importKey ; nameKeyAppropriately } }
+               Results in keys named like one of these:
+               [from GroupName] KeyName
+               [from User] KeyName
+               [from User in GroupName] KeyName
+            */
+
+
+            // we don't want to skip past pubkey failures because they
+            // may genuinely not be addressed to us.
+            if (decrypt.isPubEnc && !decrypt.gotPubDec) {
+                us_nodes_query('INSERT INTO nodes (sha256, isPubEnc, groupkey, signkeyId, signKey, parent, root, isupvote) SELECT $1,true,null,null,null,null,null,null WHERE NOT EXISTS (SELECT 1 FROM nodes WHERE sha256=$1)',
+                               [shaPkey],
+                               insertedNodeHasPubEnc, sqlFail);
+                return;
+            }
+
+            if (decrypt.sigfinger !== null) {
+                us_users_query('INSERT INTO primarykey (fingerprint) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM primarykey WHERE fingerprint=$1)',
+                               ['\\x' + decrypt.sigfinger],
+                               insertedPrimarykey, sqlFail);
+                return;
+            }
+
+            primarykeyContinue();
+        }
+
+        function insertedSha(result) {
+            us_nodes_query('SELECT pkey FROM sha256 WHERE sha256=$1',
+                           ['\\x' + hex],
+                           selectedShaPkey, sqlFail);
+        }
+
+        function gotDecrypt(d) {
+            decrypt = d;
+
+            if (decrypt.isSymEnc && (decrypt.symKey === null)) {
+                // then something has gone wrong and we should proceed no
+                // further.
+                // we assume the user hasn't somehow managed to listen
+                // on a channel they shouldn't, someone likely just
+                // posted garbage to the wrong channel
+                decAndCheck();
+                return;
+            }
+
+            us_nodes_query('INSERT INTO sha256 (sha256) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM sha256 WHERE sha256=$1)',
+                           ['\\x' + hex],
+                           insertedSha, sqlFail);
+        }
+
+        getDecrypt(params, data, gotDecrypt);
+    }
+
+    function getDataList(sourcefull, cs, ks) {
+        var ddi = sourcefull.indexOf('//');
+        var pi  = sourcefull.indexOf(':', ddi);
+        var proto = sourcefull.substr(0, ddi);
+        var host = sourcefull.substring(ddi+2, pi);
+        var port = strPosInt(sourcefull.substring(pi+1));
+        var path = '/data';
+        var pathstr = path;
+        var ch = '';
+
+        if (cs !== null) {
+            var first = true;
+            for (var c in cs) {
+                if (first) {
+                    pathstr += '?c=' + c + '.' + cs[c];
+                    first = false;
+                } else {
+                    pathstr += '.' + c + '.' + cs[c];
+                }
+            }
+        }
+        if (ks !== null) {
+            var first = true;
+            for (var k in ks) {
+                if (first) {
+                    pathstr += (pathstr === path ? '?' : '&') + 'k=' + k + '.' + ks[k];
+                    first = false;
+                } else {
+                    pathstr += '.' + k + '.' + ks[k];
+                }
+            }
+        }
+
+        var options = {
+            hostname: host,
+            port: port,
+            path: pathstr,
+            method: 'GET',
+            headers: { Accept: 'text/plain' }
+        };
+
+        function onResEnd() {
+            var lines = ch.split('\n'), m, isc, curkey, gotSomething = false;
+
+            for (var i = 0, len = lines.length; i < len; ++i) {
+                if ((lines[i].length >= 2) && (lines[i][1] === ' ')) {
+                    isc = lines[i][0] === 'c';
+                    curkey = lines[i].substr(2);
+                } else {
+                    m = hashonly_re.exec(lines[i]);
+
+                    if (m !== null) {
+                        gotSomething = true;
+
+                        if (isc) {
+                            if (curkey in cspointers[sourcefull]) {
+                                cspointers[sourcefull][curkey] += 1;
+                            }
+                        } else {
+                            if (curkey in kspointers[sourcefull]) {
+                                kspointers[sourcefull][curkey] += 1;
+                            }
+                        }
+
+                        dwaiting += 1;
+
+                        // now fetch it, decrypt, index it and so
+                        // on. the only remaining question is where to
+                        // sync, and do continueFetchLists call
+                        getDataItemAndIndex({ type: lines[i][0], key: curkey }, m[1], fetchedDataItemIndexed);
+                    }
+
+                }
+            }
+
+            if (!gotSomething) {
+                // stop if we didn't make any progress
+                decAndCheck();
+            } else {
+                continueFetchLists(offsetsMap(cscs, cspointers),
+                                   offsetsMap(kscs, kspointers));
+            }
+        }
+
+        function gotDataList(res) {
+            function resRead() {
+                var str = res.read();
+                if (str !== null) {
+                    ch += str;
+                }
+            }
+            res.setEncoding('ascii');
+            res.on('readable', resRead);
+            res.on('end', onResEnd);
+        }
+
+        if (host === '127.0.0.1') {
+            options.rejectUnauthorized = false;
+        }
+
+        if (proto === 'https:') {
+            var req = https.request(options, gotDataList);
+        } else {
+            var req = http.request(options, gotDataList);
+        }
+        req.on('error', logError);
+        req.end();
+    }
+
+    function continueFetchLists(cs, ks) {
+        if ((cs === null) && (ks === null)) {
+            decAndCheck();
+        } else {
+            if (cs !== null) {
+                for (var it in cs) {
+                    getDataList(it, cs[it], it in ks ? ks[it] : null);
+                    delete cs[it];
+                    delete ks[it];
+                    return;
+                }
+            } else {
+                for (var it in ks) {
+                    getDataList(it, null, ks[it]);
+                    delete ks[it];
+                    return;
+                }
+            }
+            // if we reached here we have finished fetching
+            decAndCheck();
+        }
+    }
+
+    function getDataCount(protocol, hostname, port, cs, ks) {
+        var sourcefull = protocol + '//' + hostname + ':' + port;
+        var path = '/count';
+        var pathstr = path;
+        var ch = '';
+
+        function onResEnd() {
+            var lines = ch.split('\n');
+            for (var i = 0, len = lines.length; i < len; ++i) {
+                var parts = lines[i].split(' ');
+                if (parts.length !== 3) {
+                    continue;
+                }
+                var count = strPosInt(parts[2]);
+                if (count < 0) {
+                    continue;
+                }
+                if (parts[0] === 'c') {
+                    if (!(parts[1] in cscs[sourcefull])) {
+                        continue;
+                    }
+                    cscs[sourcefull][parts[1]] = count;
+                } else if (parts[0] === 'k') {
+                    if (!(parts[1] in kscs[sourcefull])) {
+                        continue;
+                    }
+                    kscs[sourcefull][parts[1]] = count;
+                }
+            }
+
+            // set up cspointers and kspointers, which we use to
+            // track progress across the lists and bulk update at
+            // the end.
+            var cs = offsetsMap(cscs, csoffsets);
+            var ks = offsetsMap(kscs, ksoffsets);
+
+            for (var source in cs) {
+                if (!(source in csoffsets)) {
+                    csoffsets[source] = {};
+                }
+                cspointers[source] = {};
+                for (var key in cs[source]) {
+                    if (!(key in csoffsets[source])) {
+                        csoffsets[source][key] = 0;
+                    }
+                    cspointers[source][key] = csoffsets[source][key];
+                }
+            }
+            for (var source in ks) {
+                if (!(source in ksoffsets)) {
+                    ksoffsets[source] = {};
+                }
+                kspointers[source] = {};
+                for (var key in ks[source]) {
+                    if (!(key in ksoffsets[source])) {
+                        ksoffsets[source][key] = 0;
+                    }
+                    kspointers[source][key] = ksoffsets[source][key];
+                }
+            }
+
+            dwaiting = 1;
+            continueFetchLists(cs, ks);
+        }
+
+        function gotDataResponse(res) {
+            function resRead() {
+                var str = res.read();
+                if (str !== null) {
+                    ch += str;
+                }
+            }
+
+            res.setEncoding('ascii');
+            res.on('readable', resRead);
+            res.on('end', onResEnd);
+        }
+
+        if (cs.length !== 0) {
+            pathstr += '?c=' + cs[0];
+        }
+        for (var i = 1, len = cs.length; i < len; ++i) {
+            pathstr += '.' + cs[i];
+        }
+        if (ks.length !== 0) {
+            pathstr += (pathstr === path ? '?' : '&') + 'k=' + ks[0];
+        }
+        for (var i = 1, len = ks.length; i < len; ++i) {
+            pathstr += '.' + ks[i];
+        }
+
+        var options = {
+            hostname: hostname,
+            port: port,
+            path: pathstr,
+            method: 'GET',
+            headers: { Accept: 'text/plain' }
+        };
+
+        if ((hostname === '127.0.0.1') && (protocol === 'https:')) {
+            options.rejectUnauthorized = false;
+        }
+
+        if (protocol === 'https:') {
+            var req = https.request(options, gotDataResponse);
+        } else {
+            var req = http.request(options, gotDataResponse);
+        }
+
+        req.on('error', logError);
+        req.end();
+    }
+
+    // TODO: each source should be counted and fetched in a separate
+    // strand, so long as we don't try to fetch the same data item
+    // twice when listed in two separate sources
+    function continueKeys(cs, ks) {
+        var stalecs = [], staleks = [], key;
+
+        cscs = {};
+        kscs = {};
+        cscs[sourcesfull[0]] = {};
+        kscs[sourcesfull[0]] = {};
+
+        // TODO: filter fl down so that we only try to refetch if our
+        // cached data is older than say 1 second.
+        // If they're all under 1 second old, there's nothing to do.
+        for (var i = 0, len = cs.length; i < len; ++i) {
+            key = cs[i].read_token.toString('base64');
+            cscs[sourcesfull[0]][key] = 0;
+            stalecs.push(key.replace(unreplaceB64Regex, unreplaceB64));
+        }
+        for (var i = 0, len = ks.length; i < len; ++i) {
+            key = ks[i].fingerprint.toString('hex').toUpperCase();
+            kscs[sourcesfull[0]][key] = 0;
+            staleks.push(key);
+        }
+
+        if ((stalecs.length !== 0) || (staleks.length !== 0)) {
+            getDataCount(sources[0].proto, sources[0].host, sources[0].port, stalecs, staleks);
+        } else {
+            cont();
+        }
+    }
+
+    function checkContinue() {
+        if (aborted) {
+            return;
+        }
+        --waiting;
+        if (waiting === 0) {
+            continueKeys(cs, ks);
+        }
+    }
+
+    function gotPubkeyAliases(result) {
+        if (result === null) {
+            aborted = true;
+            sendResponse(params, 500, 'Could not get list of known keys');
+            return;
+        }
+        if (ks !== null) {
+            var oldk = ks[0];
+            ks = result.rows;
+            ks.push(oldk);
+        } else {
+            ks = result.rows;
+        }
+        checkContinue();
+    }
+
+    function gotPubkeyOwn(result) {
+        if (result === null) {
+            aborted = true;
+            sendResponse(params, 500, 'Could not get list of known keys');
+            return;
+        }
+        if (ks !== null) {
+            ks.push(result.rows[0]);
+        } else {
+            ks = result.rows;
+        }
+
+        ks = result.rows;
+        checkContinue();
+    }
+
+    function gotReadToken(result) {
+        if (result === null) {
+            aborted = true;
+            sendResponse(params, 500, 'Could not get list of known keys');
+            return;
+        }
+        cs = result.rows;
+        checkContinue();
+    }
+
+    us_pubkey_alias_query('SELECT pk.fingerprint FROM primarykey AS pk, pubkey_own AS pa WHERE pa.username=$1 AND pa.primarykey=pk.pkey',
+                          [username],
+                          gotPubkeyAliases);
+
+    us_pubkey_alias_query('SELECT pk.fingerprint FROM primarykey AS pk, pubkey_alias AS pa WHERE pa.username=$1 AND pa.primarykey=pk.pkey',
+                          [username],
+                          gotPubkeyAliases);
+
+    us_keys_query('SELECT s.read_token FROM secrets AS s, secrets_alias AS sa WHERE sa.username=$1 AND sa.secret=s.pkey',
+                  [username],
+                  gotReadToken);
 }
 
 // LOGIN CODE
@@ -905,8 +1395,12 @@ function getUpvotedCached(hex) {
 var gpgStart = '-----BEGIN PGP ';
 var pubkeyStart = ':pubkey enc packet:';
 var symkeyStart = ':symkey enc packet:';
+var keyStart = ':public key packet:';
+
 var signatureRegex = /\n:signature packet:.*keyid ([0-9A-F]{16})\n/;
 var sigMadeRegex = /gpg: Signature made .* using .* key ID ([0-9A-F]{8})\n/;
+var sigErrRegex = / ERRSIG ([0-9A-F]{16}) /;
+var sigValidRegex = / VALIDSIG ([0-9A-F]{40}) /;
 
 /*
 This should attempt the steps of postPost in reverse. Start trying to
@@ -938,35 +1432,83 @@ before we hit the right one (or not).
 // FIXME: use --status-fd more often.
 
 function getDecrypt(params, data, cont) {
-    var gpgDir, ch = '', hasPubkey = false, verified = null, signkey = null, keys, key, gpg, gpgStatus, decData, sigRes = '';
+    var gpgDir, ch = '', isPubEnc = false, isSymEnc = null, hasPubKey = null, gotPubDec = null,
+    keys, key, gpg, gpgStatus, decData, sigRes = '', partial = data, symKey = null, symKeyPkey = null,
+    signkeyId = null, sigfinger = null;
 
     // TODO: return the key signed with and encrypted to if present.
 
-    // NB: "signkey" can be 8 or 16 chars if present.
-
-    function endSignature(code) {
-        // we only set verified true if a signature packet was found
-        if ((verified === false) && (code === 0)) {
-            verified = true;
-        }
-
-        if (sigRes !== '') {
-            var m = sigMadeRegex.exec(sigRes);
-            if (m !== null) {
-                signkey = m[1];
-            }
-        }
-
-        cont({ data: ch, verified: verified, group: null, pubkey: hasPubkey, signkey: signkey });
+    function finish() {
+        cont({ data: partial, isPubEnc: isPubEnc, gotPubDec: gotPubDec, isSymEnc: isSymEnc, symKey: symKey, symKeyPkey: symKeyPkey, signkeyId: signkeyId, sigfinger: sigfinger, hasPubKey: hasPubKey });
     }
 
-    function checkKeyPackets() {
-        var m = signatureRegex.exec(ch);
-        if (m !== null) {
-            signkey = m[1];
-            verified = gpgStatus === 0;
+    function endPubdec(code) {
+        if (code !== 0) {
+            if (ch === '') {
+                gotPubDec = false;
+                finish();
+                return;
+            }
+            // signature check failed
+            gotPubDec = true;
+            var m = sigErrRegex.exec(sigRes);
+            if (m !== null) {
+                signkeyId = m[1];
+            }
+            partial = ch;
+            finish();
+            return;
         }
-        cont({ data: decData, verified: verified, group: key.identifier, pubkey: hasPubkey, signkey: signkey });
+        gotPubDec = true;
+        var m = sigValidRegex.exec(sigRes);
+        if (m !== null) {
+            sigfinger = m[1];
+        }
+        partial = ch;
+        runListPackets();
+    }
+
+    function checkKeyEnd(code) {
+        if (code !== 0) {
+            if (ch === '') {
+                tryUserKeys();
+                return;
+            }
+            // signature check failed
+            symKey = key.identifier;
+            symKeyPkey = key.pkey;
+            var m = sigErrRegex.exec(sigRes);
+            if (m !== null) {
+                signkeyId = m[1];
+            }
+            partial = ch;
+            finish();
+            return;
+        }
+
+        symKey = key.identifier;
+        symKeyPkey = key.pkey;
+        var m = sigValidRegex.exec(sigRes);
+        if (m !== null) {
+            sigfinger = m[1];
+        }
+        partial = ch;
+        runListPackets();
+    }
+
+    function endSignature(code) {
+        var m = sigErrRegex.exec(sigRes);
+        if (m !== null) {
+            signkeyId = m[1];
+        }
+        var m = sigValidRegex.exec(sigRes);
+        if (m !== null) {
+            sigfinger = m[1];
+        }
+        if (code === 0) {
+            partial = ch;
+        }
+        finish();
     }
 
     function signatureRead() {
@@ -977,7 +1519,7 @@ function getDecrypt(params, data, cont) {
     }
 
     function signatureResultRead() {
-        var str = gpg.stderr.read();
+        var str = gpg.stdio[3].read();
         if (str !== null) {
             sigRes += str;
         }
@@ -990,46 +1532,24 @@ function getDecrypt(params, data, cont) {
         }
     }
 
-    function checkKeyEnd(status) {
-        if (ch === '') {
-            tryUserKeys();
-            return;
-        }
-
-        // if it worked, then have perform --list-packets with that
-        // shared key to see whether there was a signature.
-
-        gpgStatus = status;
-        decdata = ch;
-
-        gpg = child_process.spawn('/usr/bin/gpg',
-                                  ['-q', '--passphrase-fd', '3', '--homedir', 'var/gpg/' + gpgDir, '--batch', '--list-packets'],
-                                  { stdio: ['pipe', 'pipe', 'ignore', 'pipe'] });
-
-        ch = '';
-        gpg.stdout.on('readable', listPacketsRead);
-        gpg.stdout.on('end', checkKeyPackets);
-        gpg.stdio[3].write(key.secret);
-        gpg.stdin.write(data);
-        gpg.stdin.end();
-    }
-
     function tryUserKeys() {
         if (keys.length === 0) {
-            cont({ data: ch, verified: verified, group: false, pubkey: hasPubkey, signkey: signkey });
+            finish();
             return;
         }
 
         key = keys.pop();
         gpg = child_process.spawn('/usr/bin/gpg',
-                                      ['-q', '--batch', '--passphrase-fd', '3', '--homedir', 'var/gpg/' + gpgDir],
-                                      { stdio: ['pipe', 'pipe', 'ignore', 'pipe'] });
+                                  ['-q', '--batch', '--status-fd', '3', '--passphrase-fd', '4', '--homedir', 'var/gpg/' + gpgDir],
+                                  { stdio: ['pipe', 'pipe', 'ignore', 'pipe', 'pipe'] });
 
         ch = '';
+        sigRes = '';
         gpg.stdout.on('close', checkKeyEnd);
         gpg.stdout.on('readable', signatureRead);
-        gpg.stdio[3].write(key.secret);
-        gpg.stdin.write(data);
+        gpg.stdio[3].on('readable', signatureResultRead);
+        gpg.stdio[4].write(key.secret);
+        gpg.stdin.write(partial);
         gpg.stdin.end();
     }
 
@@ -1042,45 +1562,49 @@ function getDecrypt(params, data, cont) {
     }
 
     function listPacketsEnd() {
+        var endFunc = endSignature;
         if (ch.substr(0, symkeyStart.length) === symkeyStart) {
             //loop through the secrets trying each in turn
-            us_keys_query('SELECT identifier,secret FROM secrets WHERE username=$1',
+            isSymEnc = true;
+            us_keys_query('SELECT s.pkey,sa.identifier,s.secret FROM secrets AS s, secrets_alias AS sa WHERE sa.username=$1 AND sa.secret=s.pkey',
                           [username],
                           gotUserKeys);
             return;
         }
 
-        if (ch.substr(0, pubkeyStart.length) === pubkeyStart) {
-            var m = signatureRegex.exec(ch);
-            if (m !== null) {
-                signkey = m[1];
-                verified = false;
-            }
-
-            hasPubkey = true;
+        if ((ch.substr(0, pubkeyStart.length) === pubkeyStart)) {
+            isPubEnc = true;
+            endFunc = endPubdec;
             // fall through
-
-            // FIXME BROKEN
-            // The contained message could be Group encrypted
-
         }
 
-        // FIXME: clearsign list-packets doesn't show us the keyid.
-        // Is there any choice other than parse the stderr log?
+        if ((ch.substr(0, keyStart.length) === keyStart)) {
+            hasPubKey = true;
+            // fall through
+        }
 
-        // see if it's a valid cleartext signature
-        // --verify is not specified because we want the data stripped
-        // of signature tags anway.
-        verified = false;
         gpg = child_process.spawn('/usr/bin/gpg',
-                                      ['-q', '--homedir', 'var/gpg/' + gpgDir, '--batch'],
-                                      { stdio: ['pipe', 'pipe', 'pipe'] });
+                                  ['-q', '--homedir', 'var/gpg/' + gpgDir, '--batch', '--status-fd', '3'],
+                                  { stdio: ['pipe', 'pipe', 'ignore', 'pipe'] });
         ch = '';
         sigRes = '';
-        gpg.on('close', endSignature);
+        gpg.on('close', endFunc);
         gpg.stdout.on('readable', signatureRead);
-        gpg.stderr.on('readable', signatureResultRead);
-        gpg.stdin.write(data);
+        gpg.stdio[3].on('readable', signatureResultRead);
+        gpg.stdin.write(partial);
+        gpg.stdin.end();
+    }
+
+    function runListPackets() {
+        ch = '';
+        sigRes = '';
+        gpg = child_process.spawn('/usr/bin/gpg',
+                                  ['-q', '--homedir', 'var/gpg/' + gpgDir, '--batch', '--list-packets'],
+                                  { stdio: ['pipe', 'pipe', 'ignore'] });
+
+        gpg.stdout.on('readable', listPacketsRead);
+        gpg.stdout.on('end', listPacketsEnd);
+        gpg.stdin.write(partial);
         gpg.stdin.end();
     }
 
@@ -1091,22 +1615,34 @@ function getDecrypt(params, data, cont) {
             cont(null);
             return;
         }
-        gpg = child_process.spawn('/usr/bin/gpg',
-                                  ['-q', '--homedir', 'var/gpg/' + gpgDir, '--batch', '--list-packets'],
-                                  { stdio: ['pipe', 'pipe', 'ignore'] });
 
-        gpg.stdout.on('readable', listPacketsRead);
-        gpg.stdout.on('end', listPacketsEnd);
-        gpg.stdin.write(data);
-        gpg.stdin.end();
+        partial = data;
+        runListPackets();
     }
 
-    if (data.substr(0, gpgStart.length) !== gpgStart) {
-        cont(null);
-        return;
+    if (data === '') {
+        finish();
     }
 
     getUsername(params, gotUsername);
+}
+
+function importKey() {
+
+    if ((ch.substr(0, keyStart.length) === keyStart)) {
+        isPubKey = true;
+        gpg = child_process.spawn('/usr/bin/faketime',
+                                  ["2000-01-01 00:00:00", '/usr/bin/gpg', '-q', '--homedir', 'var/gpg/' + gpgDir, '--batch', '--status-fd', '3', '--import'],
+                                  { stdio: ['pipe', 'pipe', 'ignore', 'pipe'] });
+        ch = '';
+        sigRes = '';
+        gpg.on('close', endKey);
+        gpg.stdout.on('readable', signatureRead);
+        gpg.stdio[3].on('readable', signatureResultRead);
+        gpg.stdin.write(partial);
+        gpg.stdin.end();
+        return;
+    }
 }
 
 // If there is a parent, returns it
@@ -1144,9 +1680,24 @@ function getGpgDir(username) {
     return gpgDir;
 }
 
-function postGenerateGpg(params) {
+var keyCreatedRegex = / KEY_CREATED \w+ ([0-9A-F]{40})/;
 
-    var gpgDir;
+function postGenerateGpg(params) {
+    var gpgDir, gpg, output = '', username;
+
+    function problem() {
+        sendResponse(params, 500, 'Could not generate keys');
+    }
+
+    function insertedOwnPrimarykey(result) {
+        redirectTo(params, '/keys');
+    }
+
+    function insertedPrimarykey(result) {
+        us_users_query('INSERT INTO pubkey_own (username, primarykey) VALUES ($1, $2)',
+                       [username, result.rows[0].pkey],
+                       insertedOwnPrimarykey, problem);
+    }
 
     function gpgClose(code) {
         if (code !== 0) {
@@ -1154,7 +1705,24 @@ function postGenerateGpg(params) {
             redirectTo(params, '/error/500');
             return;
         }
-        redirectTo(params, '/keys');
+
+        var m = output.match(keyCreatedRegex);
+        if (m === null) {
+            async_log('no match for created key in output');
+            problem();
+            return;
+        }
+
+        us_users_query('INSERT INTO primarykey (fingerprint) VALUES ($1) RETURNING pkey',
+                       ['\\x' + m[1]],
+                       insertedPrimarykey, problem);
+    }
+
+    function statusRead() {
+        var str = gpg.stdio[3].read();
+        if (str !== null) {
+            output += str;
+        }
     }
 
     function madeDir(err) {
@@ -1163,9 +1731,10 @@ function postGenerateGpg(params) {
             redirectTo(params, '/error/500');
             return;
         }
-        var gpg = child_process.spawn('/usr/bin/gpg',
-                                      ['-q', '--homedir', 'var/gpg/' + gpgDir, '--batch', '--gen-key'],
-                                      { stdio: ['pipe', 'ignore', 'ignore'] });
+        gpg = child_process.spawn('/usr/bin/faketime',
+                                  ["2000-01-01 00:00:00", '/usr/bin/gpg', '-q', '--status-fd', '3', '--homedir', 'var/gpg/' + gpgDir, '--batch', '--gen-key'],
+                                  { stdio: ['pipe', 'ignore', 'ignore', 'pipe'] });
+        gpg.stdio[3].on('readable', statusRead);
         gpg.on('exit', gpgClose);
 
         // Could use 4096 bit, but this is not the weakest link of
@@ -1176,6 +1745,7 @@ function postGenerateGpg(params) {
                         'Subkey-Type: RSA\n' +
                         'Subkey-Length: 2048\n' +
                         'Subkey-Usage: encrypt\n' +
+                        'Creation-Date: 20000101T000000\n' +
                         'Name-Real: Anonymous\n');
 //                        'Name-Comment: \n' +
 //                        'Name-Email: \n' +
@@ -1183,7 +1753,8 @@ function postGenerateGpg(params) {
         gpg.stdin.end();
     }
 
-    function gotUsername(username) {
+    function gotUsername(u) {
+        username = u;
         gpgDir = getGpgDir(username);
 
         if (gpgDir === null) {
@@ -1198,13 +1769,13 @@ function postGenerateGpg(params) {
     getUsername(params, gotUsername);
 }
 
-var importRegex = /gpg: key ([0-9A-F]{8}):/;
+var importRegex = /^\[GNUPG:\] IMPORT_OK [0-9]+ ([0-9A-F]{40})/;
 
 function postImportGpg(params) {
 
     // FIXME: prevent duplicates and so on.
 
-    var gpg, pubkey, data = '', username, identifier;
+    var gpg, pubkey, data = '', username, identifier, fingerprint;
 
     function insertedAlias(result) {
         if (result === null) {
@@ -1214,23 +1785,34 @@ function postImportGpg(params) {
         sendResponse(params, 200, 'Import successful');
     }
 
-    function gotImportResult(status) {
-        var m = importRegex.exec(data);
-        if ((status !== 0) || (m === null)) {
-            console.log(status);
-            console.log(m);
-            console.log(data);
-            sendResponse(params, 500, 'Could not import key');
-            return;
-        }
-
-        us_pubkey_alias_query('INSERT INTO pubkey_alias (username, keyid, identifier) VALUES ($1, $2, $3)',
-                              [username, m[1], identifier],
+    function selectedKeyPkey(result) {
+        us_pubkey_alias_query('INSERT INTO pubkey_alias (username, primarykey, identifier) SELECT $1, $2, $3 WHERE NOT EXISTS (SELECT 1 FROM pubkey_alias WHERE username=$1 AND (primarykey=$2 OR identifier=$3))',
+                              [username, result.rows[0].pkey, identifier],
                               insertedAlias);
     }
 
+    function insertedKey(result) {
+        us_pubkey_alias_query('SELECT pkey FROM primarykey WHERE fingerprint=$1',
+                              ['\\x' + fingerprint],
+                              selectedKeyPkey);
+    }
+
+    function gotImportResult(status) {
+        var m = importRegex.exec(data);
+        if ((status !== 0) || (m === null)) {
+            async_log('bad import status or no key match, status: ' + status + ', data:');
+            async_log(data);
+            sendResponse(params, 500, 'Could not import key');
+            return;
+        }
+        fingerprint = m[1]
+        us_pubkey_alias_query('INSERT INTO primarykey (fingerprint) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM primarykey WHERE fingerprint=$1)',
+                              ['\\x' + fingerprint],
+                              insertedKey);
+    }
+
     function gpgRead() {
-        var str = gpg.stderr.read();
+        var str = gpg.stdout.read();
         if (str !== null) {
             data += str;
         }
@@ -1245,10 +1827,10 @@ function postImportGpg(params) {
             return;
         }
 
-        gpg = child_process.spawn('/usr/bin/gpg',
-                                  ['--homedir', 'var/gpg/' + gpgDir, '--import'],
-                                  { stdio: ['pipe', 'ignore', 'pipe'] });
-        gpg.stderr.on('readable', gpgRead);
+        gpg = child_process.spawn('/usr/bin/faketime',
+                                  ["2000-01-01 00:00:00", '/usr/bin/gpg', '--status-fd', '1', '--homedir', 'var/gpg/' + gpgDir, '--import'],
+                                  { stdio: ['pipe', 'pipe', 'ignore'] });
+        gpg.stdout.on('readable', gpgRead);
         gpg.stdin.write(pubkey);
         gpg.stdin.end();
         gpg.on('close', gotImportResult);
@@ -1267,123 +1849,105 @@ function postImportGpg(params) {
     getFormData(params, gotFormData);
 }
 
-// This returns the list of posts with at least one upvote signed by someone in our network.
+// This returns the list of posts with at least one upvote signed by
+// someone in our network.
+// Currently it uses looks for 'parent' hash on all keys. Would like
+// to allow limiting to a subset of keys, or a single key.
+// (network files serve this purpose)
+
+// If I'm having a conversation with someone using our public keys, we
+// will be replying more or less in a linear ancestry from the opening
+// post, down to the most recent.
+// a=[hi~X] b=^a,[hi!~Y], c=^b,[me again~X], ...
+// Here ~X keeps downloading new messages in ~Y's stream and vice
+// versa.
+// Probably the best way of viewing this is by taking * from the root
+// node and flattening based on reported time.
+// After getting all data from the stream, we build the tree to
+// determine which nodes have no parent, and these become the
+// "conversations"
+
+// X~ takes all data from Y~'s stream which has a valid signature, and
+// is encrypted to X.
+// Trees are built with this data, and the roots noted. [what about
+// replies to content on another stream - should these be "roots"?
+// Especially replies to our own stream's data!]
+
+//------
+/*
+fetch *all* authenticated content (from group and pubkey channels)
+build a set of trees
+in particular, for each node record the immediate parent (or null)
+the immediate parent is as appears in ~post tag
+the ultimate parent follows this until the immediate parent is null,
+or the immediate parent is not in the authenticated set.
+The set of ultimate parents are the start of "conversations" that we
+are privy to.
+
+UI: The default tree view can be time linearised from any node
+down. If two approximately linear conversations appear off the same
+parent, they can both be linearised into distinct streams, and back
+afterwards. These are "stream" view and "tree" view. "collapse" view
+is the same for both, and as in Reddit.
+
+The UI should automatically go in collapse mode for all terminating
+branches.
+
+P
+-C1
+| C11
+|  C12
+-C2
+| C21
+|  C22
+
+P
+-C1
+|C11
+|C12
+-C2
+|C21
+|C22
+*/
+
 function getDataPostsHtml(params) {
-    var body, status, hash;
+    var body, status, hash = null;
     var waiting = 0, username;
 
-    function sendFinal() {
+    function problem(err) {
+        sendResponse(params, 500, 'There was a problem');
+    }
+
+    function sendFinal(result) {
         var html = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body><ul>';
-        var posts;
-        if ((username in user_posts) && (hash in user_posts[username])) {
-            posts = Object.keys(user_posts[username][hash]);
-            for (var k = 0, klen = posts.length; k < klen; ++k) {
-                html += '<li><a class="hash" href="/post/' + posts[k] + '">' + posts[k] + '</a></li>';
-            }
+        var posts = result.rows;
+        for (var k = 0, klen = posts.length; k < klen; ++k) {
+            var hex = posts[k].sha256.toString('hex');
+            html += '<li><a class="hash" href="/post/' + hex + '">' + hex + '</a></li>';
         }
-        html += '</ul><div><a href="/posts/form?parent=' + hash + '">Add</a></div>';
+        html += '</ul><div><a href="/posts/form' + (hash !== null ? '?parent=' + hash : '') + '">Add</a></div>';
         html += '<div><a href="/">Home</a></div></body></html>';
 
         sendResponse(params, 200, html);
     }
 
-    function decAndCheck() {
-        --waiting;
-        if (waiting === 0) {
-            sendFinal();
-        }
-    }
-
-    function setParent(hex, parent) {
-        // Index even if it's on another parent - we only traverse the
-        // stream once so there's no other opportunity to do this.
-        if (!(username in user_posts)) {
-            user_posts[username] = {};
-        }
-        if (!(parent in user_posts[username])) {
-            user_posts[username][parent] = {};
-        }
-
-        // XXX: this will also index encrypted posts
-        user_posts[username][parent][hex] = true;
-    }
-
-    function fetchedItem(hex, data) {
-        var parent = getPostParentCached(hex, data);
-
-        if (parent === null) {
-            getDecrypt(params, data, gotDecrypt(hex, true));
-            return;
-        }
-
-        setParent(hex, parent);
-        decAndCheck();
-    }
-
-    function verifyAndGet(container, upvoted) {
-        // TODO: actually verify the signature
-        if (true || verifySignature(container)) {
-            getDataItemAndIndex(upvoted, fetchedItem);
-        } else {
-            decAndCheck();
-        }
-    }
-
-    function gotDecrypt(hex, isFinal) {
-        return function (decrypt) {
-
-            // TODO: keep track of which items look like they're
-            // encrypted, bu failed to decrypt. We can try them again
-            // if we get a new key at some point.
-            if ((decrypt === null) ||
-                ((decrypt.group === null) && (decrypt.verified !== true))) {
-                decAndCheck();
-                return;
-            }
-
-            // check to prevent us following upvotes of upvotes
-            if (!isFinal) {
-                var upvoted = getUpvoteFromData(decrypt.data);
-
-                // XXX: currently this means "~upvote()...~post()" will
-                // ignore the post.
-                if (upvoted !== null) {
-                    // doesn't need a signature because it was encrypted
-                    // to a cipher key
-                    getDataItemAndIndex(upvoted, fetchedItem);
-                    return;
-                }
-            }
-            var post = getPostFromData(decrypt.data);
-
-            if (post !== null) {
-                setParent(hex, post);
-                decAndCheck();
-                return;
-            }
-            decAndCheck();
-        };
-    }
-
-    function gotItemForDecrypt(hex, data) {
-        getDecrypt(params, data, gotDecrypt(hex, false));
-    }
-
-    function gotPeerContent(lists) {
-        waiting += 1;
-        for (var i = 0, len = lists.length; i < len; ++i) {
-            waiting += lists[i].length;
-
-            for (var j = 0, jlen = lists[i].length; j < jlen; ++j) {
-                var upvoted = getUpvotedCached(lists[i][j]);
-                if (upvoted === null) {
-                    getDataItemAndIndex(lists[i][j], gotItemForDecrypt);
-                } else {
-                    verifyAndGet(lists[i][j], upvoted);
-                }
-            }
-        }
-        decAndCheck();
+    // Note: selecting parent=NULL won't catch replies to content we
+    // haven't verified, eg. the content "Sport". We may be better off
+    // leaving the parent=$2 selection out and looping over the
+    // results manually.
+    // However, it is possible to select for these too, we just need
+    // to check parent!=null and parent is not a verified post.
+    // In a chain of replies to an unverified account, we need to keep
+    // following until we reach the root node, and only display the
+    // nearest one to that, otherwise each reply will look like a
+    // separate conversation.
+    function selectPosts() {
+        // FIXME: check that if it's pubkey we're in the recipients
+        // list, and if it's group key we have the group key.
+        var query = 'SELECT s.sha256 FROM nodes AS n, sha256 AS s WHERE n.parent=(SELECT pkey FROM sha256 WHERE sha256=$2) AND n.isupvote=false AND (((n.signkey IN (SELECT primarykey FROM pubkey_alias WHERE username=$1)) OR (n.signkey IN (SELECT primarykey FROM pubkey_own WHERE username=$1)) OR (n.groupKey IN (SELECT secret FROM secrets_alias WHERE username=$1))) OR (n.pkey IN (SELECT parent FROM nodes WHERE isupvote=true AND ((signkey IN (SELECT primarykey FROM pubkey_alias WHERE username=$1)) OR (signkey IN (SELECT primarykey FROM pubkey_own WHERE username=$1)) OR (groupKey IN (SELECT secret FROM secrets_alias WHERE username=$1)))))) AND n.sha256=s.pkey';
+        us_nodes_query(query,
+                       [username, hash],
+                       sendFinal, problem);
     }
 
     function gotUsername(u) {
@@ -1397,10 +1961,7 @@ function getDataPostsHtml(params) {
 
         var query = url.parse(params.request.url, true).query;
 
-        if (!('parent' in query)) {
-            // just a helpful starting point
-            hash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
-        } else {
+        if ('parent' in query) {
             hash = query.parent;
         }
 
@@ -1415,22 +1976,25 @@ function getDataPostsHtml(params) {
 
         // lists contains all of the newly discovered hashes (possibly
         // with duplicates)
-        refreshPeerContent(username, gotPeerContent);
+        refreshPeerContent(params, username, selectPosts);
     }
 
     getUsername(params, gotUsername);
 }
 
 function getPostsFormHtml(params) {
-    var query = url.parse(params.request.url, true).query;
-    if (!('parent' in query) || !looksLikeSha(query.parent)) {
-        // TODO: prettier error handling
-        sendResponse(params, 400, 'Doesnt look like a SHA');
-        return;
+    var query = url.parse(params.request.url, true).query, parent = null;
+    if ('parent' in query) {
+        if (!looksLikeSha(query.parent)) {
+            // TODO: prettier error handling
+            sendResponse(params, 400, 'Doesnt look like a SHA');
+            return;
+        }
+        parent = query.parent;
     }
     var body = ('<!DOCTYPE html><html><head></head><body>' +
                 '    <form action="/posts" method="POST">\n' +
-                '      <input type="hidden" name="parent" value="' + query.parent + '">\n' +
+                (parent !== null ? '      <input type="hidden" name="parent" value="' + query.parent + '">\n' : '') +
                 '      <textarea name="content"></textarea>\n' +
                 '      <input value="submit" type="submit">\n' +
                 '    </form><a href="/posts">Back</a></body></html>');
@@ -1445,28 +2009,30 @@ function gotPostItem(params) {
         // 5 minutes. Main reason to keep this short is in case
         // javascript or style is accidentally broken and needs to be
         // fixed quickly
+        //
+        // FIXME: clear on logout!!!!
         params.headers['Cache-Control'] = 'max-age=300';
 
         var parentLink = (parent === null) ? '' : '<div><a href="/post/' + parent + '">Parent</a></div>';
         var verified = '<span>(Unverified)</span>', group = '', pubkey = '', by = 'Anonymous';
         if (decrypt !== null) {
-            if (decrypt.verified === true) {
+            if (decrypt.sigfinger !== null) {
                 verified = '<span>(Verified)</span>';
             }
-            if (decrypt.signkey !== null) {
-                by = htmlEscape(decrypt.signkey);
+            if (decrypt.signkeyId !== null) {
+                by = htmlEscape(decrypt.signkeyId);
             }
-            if (decrypt.group !== null) {
-                group = '<span>Group: ' + htmlEscape(decrypt.group) + '</span>';
+            if (decrypt.symKey !== null) {
+                group = '<span>Group: ' + htmlEscape(decrypt.symKey) + '</span>';
             }
-            if (decrypt.pubkey === true) {
+            if (decrypt.isPubEnc === true) {
                 pubkey = '<span>Private</span>';
             }
         }
         var title = '';
         var body = ('<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body>' + htmlEscape(title) + '<h2 class="hash">' +
                     hash +
-                    '</h1><pre>' +
+                    '</h2><pre>' +
                     htmlEscape(data.replace(parentsRegex, '')) +
                     '</pre><div>By: ' + by + ' ' + verified + '</div>' + group + pubkey + '<form action="/vote" method="POST"><input type="submit" name="vote" value="upvote"></form>' + parentLink + '<div><a href="/posts?parent=' + hash + '">Comments</a><div><a href="/posts/form?parent=' + hash + '">Reply</a></div></div><div></div><script type="text/javascript" src="/script?v=0"></script></body></html>');
 
@@ -1482,7 +2048,7 @@ function gotPostItem(params) {
         printLiteral();
     }
 
-    function gotPostItemLiteral(h, d) {
+    function gotPostItemLiteral(ctx, h, d) {
         hash = h;
         data = d;
 
@@ -1504,7 +2070,7 @@ function gotPostItem(params) {
 function getPostItemHtml(params) {
     var hash = params.urlparts.pathname.substring('/post/'.length);
 
-    getDataItemAndIndex(hash, gotPostItem(params));
+    getDataItemAndIndex(null, hash, gotPostItem(params));
 }
 
 function getStyleCss(params) {
@@ -1592,27 +2158,159 @@ function getPostsFormResultHtml(params) {
                   query.sha256 + '</a></div><div><a href="/posts">Back</a></div>'));
 }
 
-function postFinished(hex) {
-    return function (params, result) {
-        if (!result) {
-            // if the post didn't make it to the backing store, remove
-            // it from the cache to avoid confusion.
-            delete hashed_by[hex];
+function postFailed(params) {
+    sendResponse(params, 500, 'Could not submit post');
+}
+
+function postFinished(params, hex) {
+    redirectTo(params, '/posts/form/result?sha256=' + hex);
+}
+
+function postKeySend(params) {
+    /*
+      If the target is a Pubkey, encrypt to the Pubkey, sign by us, post on our own channel
+      If the target is a Symkey, post on the group channel
+
+either:
+~name(foobar)
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+~name(foobar)
+~key(5c8c86baa6c4c0b7daff2b326f22383a7e16642b490e8d67711db22cec94c91c)
+
+
+      On the receiving end, the retriever will find:
+      :public key packet:
+      Ideally we should include a name for it, and the signer/group it
+      was found in.
+
+      This should then appear in the receiver's key list as either:
+      "[from: userbob] name"
+      "[from: bob] name"
+
+      Now we just need to automatically add this on downloading data
+      from the stream.
+      Currently we have isupvoted, with (!isupvote && parent!=null)
+      implying a post. Potentially, this could be changed to a
+      smallint "type" value, with 1=upvote 2=post 4=symkey 8=pubkey
+      This would take up the same amount of space as two boolean
+      fields anyway i think
+
+    */
+
+    var uparams, identifier, toPost, username;
+
+    function problem() {
+        sendResponse(params, 500, 'Could not send key');
+    }
+
+    function gotSymKeyTo(result) {
+        if (result.rows.length !== 1) {
+            problem();
+            return;
         }
-        redirectTo(params, '/posts/form/result?sha256=' + hex);
-    };
+        postPostInner(params, false, uparams.to.substr(1), null,  toPost,
+                      postFinished, postFailed);
+    }
+
+    function gotPubKeyTo(result) {
+        if (result.rows.length !== 1) {
+            problem();
+            return;
+        }
+        postPostInner(params, true, null, uparams.to.substr(1), toPost,
+                      postFinished, postFailed);
+    }
+
+    function sendKey(data) {
+        toPost = data;
+
+        // now post it to either a group channel, or signed on own channel
+        var to = uparams.to;
+        if ((to.length === 41) && (to[0] === 'k')) {
+            // TODO: validate hex param first
+            us_users_query('SELECT pa.identifier FROM pubkey_alias AS pa, primarykey AS pk WHERE pa.username=$1 AND pk.fingerprint=$2 AND pa.primarykey=pk.pkey',
+                           [username, '\\x' + to.substr(1)],
+                           gotPubKeyTo, problem);
+        } else if ((to.length === 65) && (to[0] === 'c')) {
+            // TODO: validate hex param first
+            us_users_query('SELECT 1 FROM secrets_alias AS sa, secrets AS s WHERE sa.username=$1 AND s.read_token=$2 AND sa.secret=s.pkey',
+                           [username, '\\x' + to.substr(1)],
+                           gotSymKeyTo, problem);
+        } else {
+            sendResponse(params, 400, 'Invalid key value');
+            return;
+        }
+    }
+
+    function gotSymkeyIdentifier(result) {
+        sendKey('~name(' + result.rows[0].identifier + ')\n~key(' + result.rows[0].secret.toString('base64') + ')');
+    }
+
+    function gotPublicKey(key) {
+        sendKey('~name(' + identifier + ')\n' + key);
+    }
+
+    function gotPubkeyIdentifier(result) {
+        identifier = result.rows[0].identifier;
+        getPublicKey(uparams.to.substr(1), gotPublicKey, problem);
+    }
+
+    function gotUsername(u) {
+        username = u;
+        var gpgDir = getGpgDir(username);
+
+        if (gpgDir === null) {
+            redirectTo(params, '/error/500');
+            return;
+        }
+
+        var key = uparams.key;
+        if ((key.length === 41) && (key[0] === 'k')) {
+            // TODO: validate hex param first
+            // TODO: sending our own key
+            us_users_query('SELECT pa.identifier FROM pubkey_alias AS pa, primarykey AS pk WHERE pa.username=$1 AND pk.fingerprint=$2 AND pa.primarykey=pk.pkey',
+                           [username, '\\x' + key.substr(1)],
+                           gotPubkeyIdentifier, problem);
+        } else if ((key.length === 65) && (key[0] === 'c')) {
+            // TODO: validate hex param first
+            us_users_query('SELECT sa.identifier,s.secret FROM secrets_alias AS sa, secrets AS s WHERE sa.username=$1 AND s.read_token=$2 AND sa.secret=s.pkey',
+                           [username, '\\x' + key.substr(1)],
+                           gotSymkeyIdentifier, problem);
+        } else {
+            sendResponse(params, 400, 'Invalid key value');
+            return;
+        }
+    }
+
+    function gotFormData(params, up) {
+        uparams = up
+        if (!('key' in uparams) || !('to' in uparams)) {
+            sendResponse(params, 400, 'Missing key name or recipient');
+            return;
+        }
+        getUsername(params, gotUsername);
+    }
+
+    getFormData(params, gotFormData);
 }
 
 // FIXME: check for existing identifier first!!
 function postGenerateUserKey(params) {
-    var username, identifier, shasum, hashparts = [], wtoken, secret;
+    var username, identifier, shasum, hashparts = [], wtokenbuf, secret;
 
-    function insertedKey(result) {
+    function insertedAlias(result) {
         if (result === null) {
             sendResponse(params, 500, 'Failed to generate a new key');
             return;
         }
         redirectTo(params, '/keys');
+    }
+
+    function insertedKey(result) {
+        us_keys_query("INSERT INTO secrets_alias (username, identifier, secret, ignore_new) VALUES ($1, $2, $3, false)",
+                      [username, identifier, result.rows[0].pkey],
+                      insertedAlias);
     }
 
     function shasumRead() {
@@ -1625,24 +2323,26 @@ function postGenerateUserKey(params) {
     function readShasumEnd() {
         var rtokenbuf = Buffer.concat(hashparts);
         var rtoken = rtokenbuf.toString('base64');
-        var rtokenkeyid = rtokenbuf.toString('hex').substr(64 - 8).toUpperCase();
 
-        us_keys_query("INSERT INTO secrets (username, identifier, secret, modified_date, ignore_new, write_token, read_token, key_id) VALUES ($1, $2, $3, CURRENT_TIMESTAMP, false, $4, $5, $6)",
-                      [username, identifier, '\\x' + secret.toString('hex'), wtoken, rtoken, rtokenkeyid],
+        us_keys_query("INSERT INTO secrets (secret, write_token, read_token) VALUES ($1, $2, $3) RETURNING pkey",
+                      ['\\x' + secret.toString('hex'), '\\x' + wtokenbuf.toString('hex'), '\\x' + rtokenbuf.toString('hex')],
                       insertedKey);
     }
 
     function shasumEnd() {
         // take the low 144 bits as our Write token
-        wtoken = Buffer.concat(hashparts).slice(64 - 18).toString('base64');
+        wtokenbuf = Buffer.concat(hashparts).slice(64 - 18);
+
         // now derive the Read token from the Write token
+        // Note, read_token is the sha256 of the write_token base64,
+        // not the write token binary
 
         hashparts = []
         shasum = crypto.createHash('sha256');
         shasum.on('readable', shasumRead);
         shasum.on('end', readShasumEnd);
-        if (wtoken !== '') {
-            shasum.write(wtoken);
+        if (wtokenbuf.length !== 0) {
+            shasum.write(wtokenbuf.toString('base64'));
         }
         shasum.end();
     }
@@ -1695,7 +2395,7 @@ function postGenerateUserKey(params) {
 // Assume that ours is the only Ultimately trusted key
 var pubKeyRegex = /\npub:u:2048:1:([0-9A-F]{16})/;
 
-function getPublicKeyId(username, cont) {
+function getPublicKeyId(username, cont, fail) {
     var gpg, data = '';
 
     function gpgRead() {
@@ -1709,7 +2409,7 @@ function getPublicKeyId(username, cont) {
         var m = pubKeyRegex.exec(data);
         if (m === null) {
             async_log('gpg output had no public key!');
-            cont(null);
+            fail();
             return;
         }
 
@@ -1728,17 +2428,11 @@ function getPublicKeyId(username, cont) {
     gpg.on('close', gotListKeys);
 }
 
-function getPublicKeyHtml(params) {
-
+function getPublicKey(fingerprint, cont, fail) {
     var gpg, gpgDir, data = '';
 
     function gotPubKey(status) {
-        if (status !== 0) {
-            async_log('error exporting public key', status);
-            sendResponse(params, 500, 'error getting public key');
-            return;
-        }
-        sendResponse(params, 200, '<!DOCTYPE html><html><head></head><body><pre>' + htmlEscape(data) + '</pre></body></html>');
+        cont(data);
     }
 
     function gpgRead() {
@@ -1749,30 +2443,46 @@ function getPublicKeyHtml(params) {
     }
 
     function gotPublicKeyId(pubkey) {
-        if (pubkey === null) {
-            async_log('gpg output had no public key!');
-            sendResponse(params, 500, 'Could not retrieve public key');
-            return;
-        }
-
         data = '';
-        gpg = child_process.spawn('/usr/bin/gpg',
-                                  ['-qa', '--homedir', 'var/gpg/' + gpgDir, '--no-emit-version', '--export', pubkey],
+        gpg = child_process.spawn('/usr/bin/faketime',
+                                  ["2000-01-01 00:00:00", '/usr/bin/gpg', '-qa', '--homedir', 'var/gpg/' + gpgDir, '--no-emit-version', '--export', pubkey],
                                   { stdio: ['ignore', 'pipe', 'ignore'] });
         gpg.stdout.on('readable', gpgRead);
         gpg.on('close', gotPubKey);
 
     }
 
-    function gotUsername(username) {
-        gpgDir = getGpgDir(username);
+    function gotTargetUsername(result) {
+        if (result.rows.length === 0) {
+            fail();
+            return;
+        }
+        var targUsername = result.rows[0].username;
+        gpgDir = getGpgDir(targUsername);
         if (gpgDir === null) {
             return;
         }
-
-        getPublicKeyId(username, gotPublicKeyId);
+        getPublicKeyId(targUsername, gotPublicKeyId, fail);
     }
-    getUsername(params, gotUsername);
+
+    us_users_query('SELECT po.username FROM pubkey_own AS po, primarykey AS pk WHERE pk.fingerprint=$1 AND po.primarykey=pk.pkey',
+                   ['\\x' + fingerprint],
+                   gotTargetUsername, fail);
+}
+
+function getPublicKeyHtml(params) {
+    var gpg, gpgDir, data = '';
+
+    function problem() {
+        sendResponse(params, 500, 'error getting public key');
+    }
+
+    function gotPublicKey(data) {
+        sendResponse(params, 200, '<!DOCTYPE html><html><head></head><body><pre>' + htmlEscape(data) + '</pre></body></html>');
+    }
+
+    var fingerprint = params.urlparts.pathname.substring('/pubkey/'.length);
+    getPublicKey(fingerprint, gotPublicKey, problem);
 }
 
 function formatPubkeyId(pubkey) {
@@ -1787,24 +2497,41 @@ function formatPubkeyId(pubkey) {
 }
 
 function getKeys(params) {
-    var username, result, knownKeys;
+    var username, groupKeys, knownKeys;
 
-    function gotPublicKeyId(pubkey) {
+    function gotPublicKey(result) {
+        var pubkey = result.rows[0];
+        var pubkeyFinger = pubkey.fingerprint.toString('hex').toUpperCase();
+        var pubkeyId = pubkeyFinger.substr(32, 8);
         var pubkeyStr = '';
+
         if (pubkeyStr !== null) {
-            pubkeyStr = '<p>Your Key: <a class="hash" href="/keys/pubkey">' + formatPubkeyId(pubkey) + '</a></p>';
+            pubkeyStr = '<p>Your Key: <a class="hash" href="/pubkey/' + pubkeyFinger + '">' + pubkeyId + '</a> ' + htmlEscape(username) + '</p>';
         }
-        var body = pubkeyStr + '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body><div><h2>Keys</h2><ul>';
+        var body = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body>' + pubkeyStr + '<div><h2>Keys</h2><ul>';
 
         for (var i = 0, len = knownKeys.length; i < len; ++i) {
-            body += '<li><span class="hash">' +  htmlEscape(knownKeys[i].keyid) + '</span> ' + htmlEscape(knownKeys[i].identifier) + '</li>';
+            var keyfinger = knownKeys[i].fingerprint.toString('hex').toUpperCase();
+            body += '<li><a class="hash" href="/pubkey/' + keyfinger + '">' +  keyfinger.substr(32, 8) + '</a> ' + htmlEscape(knownKeys[i].identifier) + '</li>';
         }
-        body += '</ul><form method="POST" action="/key/import"><div><input type="text" name="identifier"></div><div><textarea name="pubkey"></textarea></div><input type="submit" name"action" value="Import"></form><div><h2>Groups</h2><ul>';
+        body += '</ul><form method="POST" action="/key/import"><div><input type="text" name="identifier"></div><div><textarea name="pubkey"></textarea></div><input type="submit" name="action" value="Import"></form><div><h2>Groups</h2><ul>';
 
-        for (var i = 0, len = result.rows.length; i < len; ++i) {
-            body += '<li><span class="hash">' + htmlEscape(result.rows[i].key_id) + '</span> ' + htmlEscape(result.rows[i].identifier) + '</li>';
+        for (var i = 0, len = groupKeys.length; i < len; ++i) {
+            body += '<li><span class="hash">' + htmlEscape(groupKeys[i].read_token.toString('hex', 28, 32).toUpperCase()) + '</span> ' + htmlEscape(groupKeys[i].identifier) + '</li>';
         }
-        body += '</ul><form method="POST" action="/key/generate"><input type="text" name="identifier"><input type="submit" name"action" value="Generate"></form></div><div><form action="/key/send" method="POST"><label for="keyfrom">Send key</label> <select id="keyfrom"><option value="889D1D40" selected="selected">my key</option><option value="7B6931FD">user2</option><option value="65329D94">keybob</option></select> <label for="keyto">to</label> <select id="keyto"><option value="" selected="selected"></option><option value="7B6931">user2</option><option value="65329D94">keybob</option></select> <input type="submit" value="Send"></form></div><div><h2>Networks</h2><ul>';
+        body += '</ul><form method="POST" action="/key/generate"><input type="text" name="identifier"><input type="submit" name="action" value="Generate"></form></div><div><form action="/key/send" method="POST"><label for="sendkey">Send key</label> <select name="key" id="sendkey">';
+
+        var keyOptions = '';
+        for (var i = 0, len = knownKeys.length; i < len; ++i) {
+            keyOptions += '<option value="k' + knownKeys[i].fingerprint.toString('hex') + '">' + htmlEscape(knownKeys[i].identifier) + '</option>'
+        }
+        for (var i = 0, len = groupKeys.length; i < len; ++i) {
+            keyOptions += '<option value="c' + groupKeys[i].read_token.toString('hex') + '">' + htmlEscape(groupKeys[i].identifier) + '</option>'
+        }
+        body += '<option value="k' + pubkeyFinger + '" selected="selected">My Key</option>' + keyOptions;
+        body += '</select> <label for="sendto">to</label> <select name="to" id="sendto">';
+        body += '<option value="" selected="selected"></option>' + keyOptions;
+        body += '</select> <input type="submit" value="Send"></form></div><div><h2>Networks</h2><ul>';
 
         for (var i = 0, len = 1; i < len; ++i) {
             body += '<li>' + htmlEscape('Tech (public)') + '</li>';
@@ -1821,24 +2548,26 @@ function getKeys(params) {
             return;
         }
         knownKeys = result.rows;
-        getPublicKeyId(username, gotPublicKeyId);
+        us_pubkey_alias_query('SELECT pk.fingerprint FROM pubkey_own AS po, primarykey AS pk WHERE po.username=$1 AND po.primarykey=pk.pkey',
+                              [username],
+                              gotPublicKey);
     }
 
     function gotKeys(r) {
-        result = r;
-        if (result === null) {
+        if (r === null) {
             sendResponse(params, 500, 'Could not fetch keys list');
             return;
         }
+        groupKeys = r.rows;
 
-        us_pubkey_alias_query('SELECT identifier, keyid FROM pubkey_alias WHERE username=$1',
+        us_pubkey_alias_query('SELECT pa.identifier, pk.fingerprint FROM pubkey_alias AS pa, primarykey AS pk WHERE pa.username=$1 AND pa.primarykey=pk.pkey',
                               [username],
                               gotPubkeyAliases);
     }
 
     function hasGpgDir(exists) {
         if (exists) {
-            us_keys_query('SELECT identifier, key_id FROM secrets WHERE username=$1',
+            us_keys_query('SELECT sa.identifier, s.read_token FROM secrets AS s, secrets_alias AS sa WHERE sa.username=$1 AND sa.secret=s.pkey',
                           [username],
                           gotKeys)
         } else {
@@ -1869,18 +2598,34 @@ function getKeys(params) {
 // TODO: limit upload size to something smallish like 128K. This is
 // useful at this level to stop uploads hogging connections and to
 // reduce the amount of data being SHA'd.
-function postPostInner(params, useSign, useGroup, usePrivate) {
+/*
+  Valid combinations
+  s g p
+        - public, unsigned, only useful if the document is self-authenticating
+      X - only useful if document is self-authenticating and needs privacy
+    X   - anyone in group could have written it
+    X X - like private, but authenticated as group
+  X     - public, signed
+  X   X - private and signed by us
+  X X   - signed by us, readable by rest of group
+  X X X - signed by us, and the group, private (why not just use 6?)
+ */
+function postPostInner(params, useSign, toSymKey, toPubKey, thePost, cont, fail) {
     var hasSign = false, hasGroup = false, hasPrivate = false;
-    var identifier = null, keyid = null, gpgDir = null;
-    var cipher, shasum, username, enc = '';
-    var thepost = '';
+    var keyid = null, gpgDir = null, writeToken;
+    var cipher, shasum, username, enc = '', digest;
 
-    function shasumRead() {
-        var digest = shasum.read(64);
-
-        if (digest === null) {
+    function postFinished(params, result) {
+        if (!result) {
+            fail(params);
             return;
         }
+        cont(params, digest);
+    }
+
+    function sendPost(hname, hvalue) {
+        var headers = { Accept: 'text/plain' };
+        headers[hname] = hvalue;
 
         // TODO: change to PUT when possible
         var options = {
@@ -1888,35 +2633,53 @@ function postPostInner(params, useSign, useGroup, usePrivate) {
             port: 7443,
             path: '/data',
             method: 'POST',
-            headers: { Accept: 'text/plain' }
+            headers: headers
         };
+        followUntilSuccess(params, 'https:', options, thePost, postFinished, 0);
+    }
 
-        var payload = 'content=' + encodeURIComponent(thepost);
-        followUntilSuccess(params, 'https:', options, payload, postFinished(digest), 0);
+    function gotPubKeyWriteToken(result) {
+        sendPost('X-K', result.rows[0].write_token.toString('base64'));
+    }
+
+    function shasumRead() {
+        digest = shasum.read(64);
+
+        if (digest === null) {
+            return;
+        }
+
+        if ((toPubKey !== null) || (toSymKey === null)) {
+            us_users_query('SELECT write_token FROM pubkey_own WHERE username=$1',
+                           [username],
+                           gotPubKeyWriteToken, fail);
+        } else {
+            sendPost('X-C', writeToken.toString('base64'));
+        }
     }
 
     function finishPost() {
         shasum = crypto.createHash('sha256');
         shasum.setEncoding('hex');
         shasum.on('readable', shasumRead);
-        shasum.write(thepost);
+        shasum.write(thePost);
         shasum.end();
     }
 
     function finishSign() {
-        thepost = enc;
+        thePost = enc;
         hasSign = true;
         continuePost();
     }
 
     function finishGroup() {
-        thepost = enc;
+        thePost = enc;
         hasGroup = true;
         continuePost();
     }
 
     function finishPrivate() {
-        thepost = enc;
+        thePost = enc;
         hasPrivate = true;
         continuePost();
     }
@@ -1934,6 +2697,7 @@ function postPostInner(params, useSign, useGroup, usePrivate) {
             return;
         }
         var key = result.rows[0].secret;
+        var writeToken = result.rows[0].write_token;
 
         var gpgDir = getGpgDir(username);
         if (gpgDir === null) {
@@ -1957,52 +2721,52 @@ function postPostInner(params, useSign, useGroup, usePrivate) {
           --cipher-algo AES256
           Generally the most recommended cipher to use.
          */
-        var args = ['-qac', '--batch', '--no-emit-version', '--passphrase-fd', '3', '--homedir', 'var/gpg/' + gpgDir,
+        var args = ["2000-01-01 00:00:00", '/usr/bin/gpg', '-qac', '--batch', '--no-emit-version', '--passphrase-fd', '3', '--homedir', 'var/gpg/' + gpgDir,
                     '--s2k-digest-algo', 'SHA512', '--s2k-count', '1024', '--cipher-algo', 'AES256'];
         if (useSign) {
             args.push('-s');
         }
-        cipher = child_process.spawn('/usr/bin/gpg', args,
+        cipher = child_process.spawn('/usr/bin/faketime', args,
                                      { stdio: ['pipe', 'pipe', 'ignore', 'pipe'] });
 
         enc = '';
         cipher.stdout.on('readable', cipherRead);
         cipher.stdout.on('end', finishGroup);
         cipher.stdio[3].write(key);
-        cipher.stdin.write(thepost);
+        cipher.stdin.write(thePost);
         cipher.stdin.end();
     }
 
     function continuePost() {
-        if (useSign && !useGroup && !usePrivate && !hasSign) {
-            cipher = child_process.spawn('/usr/bin/gpg',
-                                         ['-qa', '--clearsign', '--no-emit-version', '--homedir', 'var/gpg/' + gpgDir],
+        if (useSign && (toSymKey === null) && (toPubKey === null) && !hasSign) {
+            cipher = child_process.spawn('/usr/bin/faketime',
+                                         ["2000-01-01 00:00:00", '/usr/bin/gpg', '-qa', '--clearsign', '--no-emit-version', '--homedir', 'var/gpg/' + gpgDir],
                                          { stdio: ['pipe', 'pipe', 'ignore'] });
             enc = '';
             cipher.stdout.on('readable', cipherRead);
             cipher.stdout.on('end', finishSign);
-            cipher.stdin.write(thepost);
+            cipher.stdin.write(thePost);
             cipher.stdin.end();
             return;
         }
 
-        if (useGroup && !hasGroup) {
-            us_keys_query('SELECT secret FROM secrets WHERE username=$1 AND identifier=$2',
-                          [username, identifier],
+        if ((toSymKey !== null) && !hasGroup) {
+            us_keys_query('SELECT s.secret, s.write_token FROM secrets AS s, secrets_alias AS sa WHERE sa.username=$1 AND sa.read_token=$2 AND sa.secret=s.pkey',
+                          [username, '\\x' + toSymKey],
                           gotUserKey);
             return;
         }
 
-        if (usePrivate && !hasPrivate) {
-            var args = ['-qae', '--no-emit-version', '--throw-keyids', '--homedir', 'var/gpg/' + gpgDir, '-R', ];
-            if (useSign && !useGroup) {
+        if ((toPubKey !== null) && !hasPrivate) {
+            var args = [ "2000-01-01 00:00:00", '/usr/bin/gpg', '-qae', '--batch', '--always-trust', '--no-emit-version', '--throw-keyids', '--homedir', 'var/gpg/' + gpgDir, '-R', toPubKey];
+            if (useSign && (toSymKey === null)) {
                 args.push('-s');
             }
-            cipher = child_process.spawn('/usr/bin/gpg', args, { stdio: ['pipe', 'pipe', 'ignore'] });
+            cipher = child_process.spawn('/usr/bin/faketime', args, { stdio: ['pipe', 'pipe', 'ignore'] });
             enc = '';
             cipher.stdout.on('readable', cipherRead);
             cipher.stdout.on('end', finishPrivate);
-            cipher.stdin.write(thepost);
+            cipher.stdin.write(thePost);
             cipher.stdin.end();
             return;
         }
@@ -2010,40 +2774,10 @@ function postPostInner(params, useSign, useGroup, usePrivate) {
         finishPost();
     }
 
-    /*
-      Valid combinations
-      s g p
-            - public, unsigned, only useful if the document is self-authenticating
-          X - only useful if document is self-authenticating and needs privacy
-        X   - anyone in group could have written it
-        X X - like private, but authenticated as group
-      X     - public, signed
-      X   X - private and signed by us
-      X X   - signed by us, readable by rest of group
-      X X X - signed by us, and the group, private (why not just use 6?)
-     */
-
-    function gotPostPost(params, query) {
-        if (!('parent' in query) || !looksLikeSha(query.parent)) {
-            // TODO: prettier error handling
-            redirectTo(params, '/error/400');
-            return;
-        }
-
-        if (usePrivate) {
-            if (!('keyid' in query)) {
-                sendResponse(params, 400, 'Please specify key id for the private message');
-                return;
-            }
-            keyid = query.keyid;
-        }
-
-        if (useGroup) {
-            if (!('identifier' in query)) {
-                sendResponse(params, 400, 'Please specify key identifier for group post');
-                return;
-            }
-            identifier = query.identifier;
+    function gotUsername(u) {
+        username = u;
+        if (username === null) {
+            sendResponse(params, 403, 'You must be logged in to make a post <a href="/posts">Posts</a>');
         }
 
         gpgDir = getGpgDir(username);
@@ -2052,23 +2786,37 @@ function postPostInner(params, useSign, useGroup, usePrivate) {
             return;
         }
 
-        thepost = '~post(' + query.parent + ')\n~date(' + Date.now() + ')\n';
-        thepost +=  query.content;
         continuePost();
-    }
-
-    function gotUsername(u) {
-        username = u;
-        if (username === null) {
-            sendResponse(params, 403, 'You must be logged in to make a post <a href="/posts">Posts</a>');
-        }
-        getFormData(params, gotPostPost);
     }
     getUsername(params, gotUsername);
 }
 
 function postPost(params) {
-    postPostInner(params, true, false, false);
+
+    function gotPostPost(params, query) {
+        var toPubkey = null, toSymKey = null, postPart = '';
+
+        if ('pubKey' in query) {
+            toPubkey = query.keyid;
+        }
+        if ('symKey' in query) {
+            toSymKey = query.symKey;
+        }
+
+        if ('parent' in query) {
+            if (!looksLikeSha(query.parent)) {
+                // TODO: prettier error handling
+                redirectTo(params, '/error/400');
+                return;
+            }
+            postPart = '~post(' + query.parent + ')\n';
+        }
+        postPostInner(params, toSymKey === null, toSymKey, toPubkey,
+                      postPart + '~date(' + Date.now() + ')\n' + query.content,
+                      postFinished, postFailed);
+    }
+
+    getFormData(params, gotPostPost);
 }
 
 function getFaviconIco(params) {
@@ -2146,6 +2894,10 @@ var places_exact = {
         'POST': postImportGpg
     },
 
+    '/key/send': {
+        'POST': postKeySend
+    },
+
     '/gpg/generate': {
         'POST': postGenerateGpg
     },
@@ -2153,12 +2905,6 @@ var places_exact = {
     '/keys': {
         'GET': [
             { type: 'text/html', action: getKeys }
-        ]
-    },
-
-    '/keys/pubkey': {
-        'GET': [
-            { type: 'text/html', action: getPublicKeyHtml }
         ]
     },
 
@@ -2229,10 +2975,19 @@ var places_regex = [
         // collisions to occur, however, for all posts with a
         // parent(), it is still vanishingly unlikely they'll share
         // the same hash.
-        re: /\/post\/([0-9a-f]{64})/,
+        re: /^\/post\/([0-9a-f]{64})$/,
         methods: {
             'GET': [
                 { type: 'text/html', action: getPostItemHtml }
+            ]
+        }
+    },
+    {
+        // XXX: what does the equivalent key server request look like?
+        re: /^\/pubkey\/([0-9A-F]{40})$/,
+        methods: {
+            'GET': [
+                { type: 'text/html', action: getPublicKeyHtml }
             ]
         }
     }

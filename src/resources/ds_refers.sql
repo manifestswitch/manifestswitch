@@ -9,6 +9,15 @@
 -- value derived from it using sha256.
 -- In future could be sharded based on some of the sha256 value.
 
+-- Can I unify the storage of fingerprint_content with
+-- channel_content? Is this even desirable?
+
+-- Should I add write_key next to the read_key? This would save a
+-- sha256 operation at the cost of storing the text
+-- write_key. Probably not, it's nice not having to story the secret
+-- write key, and the sha256 cost is cheaper than disk usage, though
+-- the current setup does make writes slower.
+
 
 -- Just deduplicates the read_key text
 CREATE TABLE read_keys (
@@ -38,6 +47,7 @@ CREATE TABLE fingerprint_alias (
 );
 CREATE INDEX fingerprint_alias_pkey ON fingerprint_alias (pkey);
 CREATE INDEX fingerprint_alias_write_key ON fingerprint_alias (write_key);
+CREATE INDEX fingerprint_alias_fingerprint ON fingerprint_alias (fingerprint);
 
 -- as above, except for looking up by fingerprint. This uses a
 -- completely different mechanism, so is kept separate.
