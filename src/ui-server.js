@@ -466,7 +466,7 @@ function refreshPeerContent(params, username, cont, failed) {
     // now we have
 
     // all_child_posts of a parent (may be null):
-    // SELECT pkey FROM nodes WHERE parent=$2 AND isupvote=false AND ((signkey IN (SELECT primarykey FROM pubkey_alias WHERE username=$1) OR groupKey IN (SELECT secret FROM secrets_alias WHERE username=$1) OR (pkey IN (SELECT parent FROM nodes WHERE isupvote=true AND signkey IN (SELECT primarykey FROM pubkey_alias WHERE username=$1) OR groupKey IN (SELECT secret FROM secrets_alias WHERE username=$1)))))
+    // SELECT pkey FROM nodes WHERE parent=$2 AND tag=1 AND ((signkey IN (SELECT primarykey FROM pubkey_alias WHERE username=$1) OR groupKey IN (SELECT secret FROM secrets_alias WHERE username=$1) OR (pkey IN (SELECT parent FROM nodes WHERE tag=2 AND signkey IN (SELECT primarykey FROM pubkey_alias WHERE username=$1) OR groupKey IN (SELECT secret FROM secrets_alias WHERE username=$1)))))
 
     function problem() {
         failed();
@@ -494,10 +494,55 @@ function refreshPeerContent(params, username, cont, failed) {
     // key?
     // insert/ignore node info into the database.
     function fetchedDataItemIndexed(ctx, hex, data) {
-        var groupKey = null, nodePkey, decrypt, sigfingerprint = null, shaPkey, upvoted, post, signkeyId;
+        var groupKey = null, nodePkey, decrypt, sigfingerprintPkey = null, sigfingerprintIdentifier = null,
+        shaPkey, upvoted, post, signkeyId, keyType, sendGroupKey;
 
         function sqlFail(err) {
             decAndCheck();
+        }
+
+        function insertedPubKeyImported(result) {
+            if ((result.rowCount === 0) && (sigfingerprintPkey !== null)) {
+                // UPDATE nodes SET signkey=$1 WHERE sha256=$2
+            }
+            if (decrypt.isPubEnc) {
+                insertedNodeHasPubEnc();
+                return;
+            }
+            decAndCheck();
+        }
+
+        function insertedPubKeyNode(result) {
+
+            // FIXME: import only if it's signed correctly or has a good group key.
+            // otherwise, we've already recorded its existence
+
+            // We need to get hold of the @name before inserting it too
+
+            if (((sigfingerprintPkey !== null) && (sigfingerprintPkey in myFriends)) ||
+                ((decrypt.symKeyPkey !== null) && (decrypt.symKeyPkey in myGroupKeys))) {
+
+                importPublicKey(username, pubkey, identifier, importedPubKey, sqlFail);
+                return;
+            }
+            decAndCheck();
+        }
+
+        function insertedGroupKeyNode(result) {
+
+            // FIXME: insert key material immediately into secrets table, maintain a link like:
+            // CREATE TABLE imported_secret ( node integer, secret integer );
+            // This allows users to easily find the new key material when they next login
+            us_nodes_query('INSERT INTO nodes (sha256, isPubEnc, groupkey, signkeyId, signKey, parent, root, tag) SELECT $1,$2,$3,$4,$5,null,null,8 WHERE NOT EXISTS (SELECT 1 FROM nodes WHERE sha256=$1)',
+                           [shaPkey, decrypt.isPubEnc, decrypt.symKeyPkey, signkeyId, sigfingerprintPkey],
+                           insertedGroupKeyNode, sqlFail);
+
+            if (((sigfingerprintPkey !== null) && (sigfingerprintPkey in myFriends)) ||
+                ((decrypt.symKeyPkey !== null) && (decrypt.symKeyPkey in myGroupKeys))) {
+
+                importPublicKey(username, pubkey, identifier, importedPubKey, sqlFail);
+                return;
+            }
         }
 
         function insertedNotRecipient(result) {
@@ -524,8 +569,72 @@ function refreshPeerContent(params, username, cont, failed) {
                            selectedNodeHasPubEnc, sqlFail);
         }
 
+        function importedPubKey(fingerprint, primarykey) {
+            // i believe we're done at this point
+            decAndCheck();
+        }
+
+        function importedGroupKey() {
+            // i believe we're done at this point
+            decAndCheck();
+        }
+
+        function continueGotKeyImportSignIdentifier() {
+            var identifier, from, name = getNameFromData(decrypt.data);
+
+            if (sigfingerprintIdentifier !== null) {
+                if (decrypt.symKeyIdentifier !== null) {
+                    from = sigfingerprintIdentifier + ' in ' + decrypt.symKeyIdentifier;
+                } else {
+                    from = sigfingerprintIdentifier;
+                }
+            } else if (decrypt.symKeyIdentifier !== null) {
+                from = decrypt.symKeyIdentifier;
+            }
+
+            identifier = '[from: ' + from + '] ' + (name === null ? 'Unknown' : name);
+
+            // Import the thing
+            if (keyType === 4) {
+                importPublicKey(username, decrypt.data, identifier, importedPubKey, sqlFail);
+            } else if (keyType === 8) {
+                importGroupKey(username, sendGroupKey, identifier, importedGroupKey, sqlFail);
+            } else {
+                async_log('unknown key import type: ' + nodePkey);
+                decAndCheck();
+            }
+        }
+
+        function gotKeyImportSignIdentifier(result) {
+            if (result.rows.length === 0) {
+                // most likely signed by our own key
+                decAndCheck();
+                return;
+            }
+            sigfingerprintIdentifier = result.rows[0].identifier;
+            continueGotKeyImportSignIdentifier();
+        }
+
+        function insertedKeyNode(result) {
+            if ((sigfingerprintPkey === null) && (decrypt.symKeyIdentifier === null)) {
+                decAndCheck();
+                return;
+            }
+
+            if (sigfingerprintPkey !== null) {
+                // the only other option is that it's signed by our
+                // own key, in which case importing has no impact
+                us_users_query('SELECT identifier FROM pubkey_alias WHERE username=$1 AND primarykey=$2',
+                               [username, sigfingerprintPkey],
+                               gotKeyImportSignIdentifier, sqlFail);
+                return;
+            }
+
+            continueGotImportSendKeyIdentifier();
+        }
+
         function insertedUpvoteNode(result) {
-            if ((result.rowCount === 0) && (sigfingerprint !== null)) {
+            if ((result.rowCount === 0) && (sigfingerprintPkey !== null)) {
                 // UPDATE nodes SET signkey=$1 WHERE sha256=$2
             }
             if (decrypt.isPubEnc) {
@@ -536,7 +645,7 @@ function refreshPeerContent(params, username, cont, failed) {
         }
 
         function insertedPostNode(result) {
-            if ((result.rowCount === 0) && (sigfingerprint !== null)) {
+            if ((result.rowCount === 0) && (sigfingerprintPkey !== null)) {
                 // UPDATE nodes SET signkey=$1 WHERE sha256=$2
             }
             if (decrypt.isPubEnc) {
@@ -547,7 +656,7 @@ function refreshPeerContent(params, username, cont, failed) {
         }
 
         function insertedPlainNode(result) {
-            if ((result.rowCount === 0) && (sigfingerprint !== null)) {
+            if ((result.rowCount === 0) && (sigfingerprintPkey !== null)) {
                 // UPDATE nodes SET signkey=$1 WHERE sha256=$2
             }
             if (decrypt.isPubEnc) {
@@ -558,15 +667,15 @@ function refreshPeerContent(params, username, cont, failed) {
         }
 
         function gotUpvotedShaPkey(result) {
-            us_nodes_query('INSERT INTO nodes (sha256, isPubEnc, groupkey, signkeyId, signKey, parent, root, isupvote) SELECT $1,$2,$3,$4,$5,$6,null,true WHERE NOT EXISTS (SELECT 1 FROM nodes WHERE sha256=$1)',
-                           [shaPkey, decrypt.isPubEnc, decrypt.symKeyPkey, signkeyId, sigfingerprint, result.rows[0].pkey],
+            us_nodes_query('INSERT INTO nodes (sha256, isPubEnc, groupkey, signkeyId, signKey, parent, root, tag) SELECT $1,$2,$3,$4,$5,$6,null,2 WHERE NOT EXISTS (SELECT 1 FROM nodes WHERE sha256=$1)',
+                           [shaPkey, decrypt.isPubEnc, decrypt.symKeyPkey, signkeyId, sigfingerprintPkey, result.rows[0].pkey],
                            insertedUpvoteNode, sqlFail);
         }
 
         function gotPostShaPkey(result) {
-            us_nodes_query('INSERT INTO nodes (sha256, isPubEnc, groupkey, signkeyId, signKey, parent, root, isupvote) SELECT $1,$2,$3,$4,$5,$6,null,$7 WHERE NOT EXISTS (SELECT 1 FROM nodes WHERE sha256=$1)',
-                           [shaPkey, decrypt.isPubEnc, decrypt.symKeyPkey, signkeyId, sigfingerprint, result.rows[0].pkey,
-                            (!decrypt.isPubEnc || decrypt.gotPubDec) && (!decrypt.isSymEnc || decrypt.symKey !== null) ? false : null],
+            us_nodes_query('INSERT INTO nodes (sha256, isPubEnc, groupkey, signkeyId, signKey, parent, root, tag) SELECT $1,$2,$3,$4,$5,$6,null,$7 WHERE NOT EXISTS (SELECT 1 FROM nodes WHERE sha256=$1)',
+                           [shaPkey, decrypt.isPubEnc, decrypt.symKeyPkey, signkeyId, sigfingerprintPkey, result.rows[0].pkey,
+                            (!decrypt.isPubEnc || decrypt.gotPubDec) && (!decrypt.isSymEnc || decrypt.symKeyIdentifier !== null) ? 1 : null],
                            insertedPostNode, sqlFail);
         }
 
@@ -582,44 +691,14 @@ function refreshPeerContent(params, username, cont, failed) {
                            gotPostShaPkey, sqlFail);
         }
 
+        function continueInsertKey() {
+            us_nodes_query('INSERT INTO nodes (sha256, isPubEnc, groupkey, signkeyId, signKey, parent, root, tag) SELECT $1,$2,$3,$4,$5,null,null,$6 WHERE NOT EXISTS (SELECT 1 FROM nodes WHERE sha256=$1)',
+                           [shaPkey, decrypt.isPubEnc, decrypt.symKeyPkey, signkeyId, sigfingerprintPkey, keyType],
+                           insertedKeyNode, sqlFail);
+        }
+
         function primarykeyContinue() {
             signkeyId = decrypt.signkeyId === null ? null : '\\x' + decrypt.signkeyId;
-            upvoted = getUpvoteFromData(decrypt.data);
-
-            if (upvoted !== null) {
-                us_users_query('INSERT INTO sha256 (sha256) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM sha256 WHERE sha256=$1)',
-                               ['\\x' + upvoted],
-                               insertedUpvoteSha, sqlFail);
-            } else {
-                post = getPostFromData(decrypt.data);
-
-                if (post !== null) {
-                    us_users_query('INSERT INTO sha256 (sha256) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM sha256 WHERE sha256=$1)',
-                                   ['\\x' + post],
-                                   insertedPostSha, sqlFail);
-
-                } else {
-                    // could just be some plain text
-                    us_nodes_query('INSERT INTO nodes (sha256, isPubEnc, groupkey, signkeyId, signKey, parent, root, isupvote) SELECT $1,$2,$3,$4,$5,null,null,false WHERE NOT EXISTS (SELECT 1 FROM nodes WHERE sha256=$1)',
-                                   [shaPkey, decrypt.isPubEnc, decrypt.symKeyPkey, signkeyId, sigfingerprint],
-                                   insertedPlainNode, sqlFail);
-                }
-            }
-        }
-
-        function selectedPrimarykey(result) {
-            sigfingerprint = result.rows[0].pkey;
-            primarykeyContinue();
-        }
-
-        function insertedPrimarykey(result) {
-            us_users_query('SELECT pkey FROM primarykey WHERE fingerprint=$1',
-                           ['\\x' + decrypt.sigfinger],
-                           selectedPrimarykey, sqlFail);
-        }
-
-        function selectedShaPkey(result) {
-            shaPkey = result.rows[0].pkey
 
             // FIXME: at this point, if it is a public key, or a ~key
             // item, and signed by a key we trust, or is posted in a
@@ -630,22 +709,77 @@ function refreshPeerContent(params, username, cont, failed) {
                [from GroupName] KeyName
                [from User] KeyName
                [from User in GroupName] KeyName
+
+               As per normal, we also want other user's following this
+               channel to process it - that will happen in much the
+               same way, but a flag is needed in the database to
+               indicate this is a key.
+
+               Option 1:
+               add "ispubkey" and "isgroupkey"
+               Option 2:
+               add smallint "type", 1=Post, 2=Upvote, 4=PubKey, 8=GroupKey, 16=Network
             */
 
+            if (decrypt.hasPubKey) {
+                keyType = 4;
+                continueInsertKey();
+                return;
+            }
+
+            upvoted = getUpvoteFromData(decrypt.data);
+
+            if (upvoted !== null) {
+                us_users_query('INSERT INTO sha256 (sha256) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM sha256 WHERE sha256=$1)',
+                               ['\\x' + upvoted],
+                               insertedUpvoteSha, sqlFail);
+                return;
+            }
+
+            post = getPostFromData(decrypt.data);
+
+            if (post !== null) {
+                us_users_query('INSERT INTO sha256 (sha256) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM sha256 WHERE sha256=$1)',
+                               ['\\x' + post],
+                               insertedPostSha, sqlFail);
+                return;
+            }
+
+            sendGroupKey = getSentGroupKeyFromData(decrypt.data);
+
+            if (sendGroupKey !== null) {
+                keyType = 8;
+                continueInsertKey();
+                return;
+            }
+
+            // could just be some plain text
+            us_nodes_query('INSERT INTO nodes (sha256, isPubEnc, groupkey, signkeyId, signKey, parent, root, tag) SELECT $1,$2,$3,$4,$5,null,null,0 WHERE NOT EXISTS (SELECT 1 FROM nodes WHERE sha256=$1)',
+                           [shaPkey, decrypt.isPubEnc, decrypt.symKeyPkey, signkeyId, sigfingerprintPkey],
+                           insertedPlainNode, sqlFail);
+        }
+
+        function selectedSignaturePkey(result) {
+            sigfingerprintPkey = result.rows[0].pkey;
+            primarykeyContinue();
+        }
+
+        function selectedShaPkey(result) {
+            shaPkey = result.rows[0].pkey
 
             // we don't want to skip past pubkey failures because they
             // may genuinely not be addressed to us.
             if (decrypt.isPubEnc && !decrypt.gotPubDec) {
-                us_nodes_query('INSERT INTO nodes (sha256, isPubEnc, groupkey, signkeyId, signKey, parent, root, isupvote) SELECT $1,true,null,null,null,null,null,null WHERE NOT EXISTS (SELECT 1 FROM nodes WHERE sha256=$1)',
+                us_nodes_query('INSERT INTO nodes (sha256, isPubEnc, groupkey, signkeyId, signKey, parent, root, tag) SELECT $1,true,null,null,null,null,null,null WHERE NOT EXISTS (SELECT 1 FROM nodes WHERE sha256=$1)',
                                [shaPkey],
                                insertedNodeHasPubEnc, sqlFail);
                 return;
             }
 
             if (decrypt.sigfinger !== null) {
-                us_users_query('INSERT INTO primarykey (fingerprint) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM primarykey WHERE fingerprint=$1)',
+                us_users_query('SELECT pkey FROM primarykey WHERE fingerprint=$1',
                                ['\\x' + decrypt.sigfinger],
-                               insertedPrimarykey, sqlFail);
+                               selectedSignaturePkey, sqlFail);
                 return;
             }
 
@@ -661,7 +795,7 @@ function refreshPeerContent(params, username, cont, failed) {
         function gotDecrypt(d) {
             decrypt = d;
 
-            if (decrypt.isSymEnc && (decrypt.symKey === null)) {
+            if (decrypt.isSymEnc && (decrypt.symKeyIdentifier === null)) {
                 // then something has gone wrong and we should proceed no
                 // further.
                 // we assume the user hasn't somehow managed to listen
@@ -1014,7 +1148,7 @@ function refreshPeerContent(params, username, cont, failed) {
 
     us_pubkey_alias_query('SELECT pk.fingerprint FROM primarykey AS pk, pubkey_alias AS pa WHERE pa.username=$1 AND pa.primarykey=pk.pkey',
                           [username],
-                          gotPubkeyAliases);
+                          gotPubkeyOwn);
 
     us_keys_query('SELECT s.read_token FROM secrets AS s, secrets_alias AS sa WHERE sa.username=$1 AND sa.secret=s.pkey',
                   [username],
@@ -1289,8 +1423,8 @@ function getHomePageHtml(params) {
                              '    </form>\n')
                     ) +
                     '    <div>\n' +
-                    '      <h1>Data</h1>\n' +
-                    '      <div>Stuff stuff <a href="/posts">posts</a></div>\n' +
+                    '      <h1>UI</h1>\n' +
+                    '      <div><a href="/keys">keys</a> <a href="/posts">posts</a></div>\n' +
                     '    </div>\n' +
                     '  </body>\n' +
                     '</html>');
@@ -1371,6 +1505,10 @@ var upvotes = {
 
 var upvoteRegex = /~upvote\(([0-9a-f]{64})\)/;
 
+var sentGroupKeyRegex = /~key\(([0-9a-zA-Z\/\+]{43}=)\)/;
+
+var nameRegex = /~name\(([^\)]+)\)/;
+
 function getPostFromData(data) {
     var match = data.match(parentsRegex);
     return (match === null) ? null : match[1];
@@ -1378,6 +1516,16 @@ function getPostFromData(data) {
 
 function getUpvoteFromData(data) {
     var match = data.match(upvoteRegex);
+    return (match === null) ? null : match[1];
+}
+
+function getSentGroupKeyFromData(data) {
+    var match = data.match(sentGroupKeyRegex);
+    return (match === null) ? null : new Buffer(match[1], 'base64');
+}
+
+function getNameFromData(data) {
+    var match = data.match(nameRegex);
     return (match === null) ? null : match[1];
 }
 
@@ -1433,13 +1581,15 @@ before we hit the right one (or not).
 
 function getDecrypt(params, data, cont) {
     var gpgDir, ch = '', isPubEnc = false, isSymEnc = null, hasPubKey = null, gotPubDec = null,
-    keys, key, gpg, gpgStatus, decData, sigRes = '', partial = data, symKey = null, symKeyPkey = null,
+    keys, key, gpg, gpgStatus, decData, sigRes = '', partial = data, symKeyIdentifier = null, symKeyPkey = null,
     signkeyId = null, sigfinger = null;
 
     // TODO: return the key signed with and encrypted to if present.
 
     function finish() {
-        cont({ data: partial, isPubEnc: isPubEnc, gotPubDec: gotPubDec, isSymEnc: isSymEnc, symKey: symKey, symKeyPkey: symKeyPkey, signkeyId: signkeyId, sigfinger: sigfinger, hasPubKey: hasPubKey });
+        cont({ data: partial, isPubEnc: isPubEnc, gotPubDec: gotPubDec, isSymEnc: isSymEnc,
+               symKeyIdentifier: symKeyIdentifier, symKeyPkey: symKeyPkey,
+               signkeyId: signkeyId, sigfinger: sigfinger, hasPubKey: hasPubKey });
     }
 
     function endPubdec(code) {
@@ -1680,10 +1830,11 @@ function getGpgDir(username) {
     return gpgDir;
 }
 
+var hexCharsRegex = /^[0-9a-f]+$/;
 var keyCreatedRegex = / KEY_CREATED \w+ ([0-9A-F]{40})/;
 
 function postGenerateGpg(params) {
-    var gpgDir, gpg, output = '', username;
+    var gpgDir, gpg, output = '', username, primarykey, fingerprint, res, tokstr = '';
 
     function problem() {
         sendResponse(params, 500, 'Could not generate keys');
@@ -1693,10 +1844,49 @@ function postGenerateGpg(params) {
         redirectTo(params, '/keys');
     }
 
-    function insertedPrimarykey(result) {
-        us_users_query('INSERT INTO pubkey_own (username, primarykey) VALUES ($1, $2)',
-                       [username, result.rows[0].pkey],
+    function gotToken() {
+        console.log(tokstr);
+
+        if (!tokstr.match(hexCharsRegex)) {
+            async_log('Token string not valid: ' + tokstr);
+            problem();
+            return;
+        }
+
+        us_users_query('INSERT INTO pubkey_own (username, primarykey, write_token) VALUES ($1, $2, $3)',
+                       [username, primarykey, '\\x' + tokstr],
                        insertedOwnPrimarykey, problem);
+    }
+
+    function readToken() {
+        var s = res.read();
+        if (s !== null) {
+            tokstr += s;
+        }
+    }
+
+    function generatedToken(params, result, r) {
+        if (!result) {
+            problem();
+            return;
+        }
+        res = r;
+        res.setEncoding('ascii');
+        res.on('end', gotToken);
+        res.on('readable', readToken);
+    }
+
+    function insertedPrimarykey(result) {
+        primarykey = result.rows[0].pkey;
+
+        var options = {
+            hostname: '127.0.0.1',
+            port: 7443,
+            path: '/token',
+            method: 'POST',
+            headers: {}
+        };
+        followUntilSuccess(params, 'https:', options, 'fingerprint=' + fingerprint, generatedToken, 0);
     }
 
     function gpgClose(code) {
@@ -1712,9 +1902,10 @@ function postGenerateGpg(params) {
             problem();
             return;
         }
+        fingerprint = m[1];
 
         us_users_query('INSERT INTO primarykey (fingerprint) VALUES ($1) RETURNING pkey',
-                       ['\\x' + m[1]],
+                       ['\\x' + fingerprint],
                        insertedPrimarykey, problem);
     }
 
@@ -1769,25 +1960,26 @@ function postGenerateGpg(params) {
     getUsername(params, gotUsername);
 }
 
-var importRegex = /^\[GNUPG:\] IMPORT_OK [0-9]+ ([0-9A-F]{40})/;
+var importRegex = /\[GNUPG:\] IMPORT_OK [0-9]+ ([0-9A-F]{40})/;
 
-function postImportGpg(params) {
+function importPublicKey(username, pubkey, identifier, success, fail) {
 
     // FIXME: prevent duplicates and so on.
 
-    var gpg, pubkey, data = '', username, identifier, fingerprint;
+    var gpg, data = '', fingerprint, primarykey;
 
     function insertedAlias(result) {
         if (result === null) {
-            sendResponse(params, 500, 'Could not import key');
+            fail();
             return;
         }
-        sendResponse(params, 200, 'Import successful');
+        success(fingerprint, primarykey);
     }
 
     function selectedKeyPkey(result) {
+        primarykey = result.rows[0].pkey;
         us_pubkey_alias_query('INSERT INTO pubkey_alias (username, primarykey, identifier) SELECT $1, $2, $3 WHERE NOT EXISTS (SELECT 1 FROM pubkey_alias WHERE username=$1 AND (primarykey=$2 OR identifier=$3))',
-                              [username, result.rows[0].pkey, identifier],
+                              [username, primarykey, identifier],
                               insertedAlias);
     }
 
@@ -1802,7 +1994,7 @@ function postImportGpg(params) {
         if ((status !== 0) || (m === null)) {
             async_log('bad import status or no key match, status: ' + status + ', data:');
             async_log(data);
-            sendResponse(params, 500, 'Could not import key');
+            fail();
             return;
         }
         fingerprint = m[1]
@@ -1818,8 +2010,34 @@ function postImportGpg(params) {
         }
     }
 
-    function gotUsername(u) {
-        username = u;
+    var gpgDir = getGpgDir(username);
+
+    if (gpgDir === null) {
+        fail();
+        return;
+    }
+
+    gpg = child_process.spawn('/usr/bin/faketime',
+                              ["2000-01-01 00:00:00", '/usr/bin/gpg', '--status-fd', '1', '--homedir', 'var/gpg/' + gpgDir, '--import'],
+                              { stdio: ['pipe', 'pipe', 'ignore'] });
+    gpg.stdout.on('readable', gpgRead);
+    gpg.stdin.write(pubkey);
+    gpg.stdin.end();
+    gpg.on('close', gotImportResult);
+}
+
+function postImportGpg(params) {
+    var pubkey, identifier;
+
+    function fail() {
+        sendResponse(params, 500, 'Could not import key');
+    }
+
+    function success(fingerprint, primarykey) {
+        sendResponse(params, 200, 'Import successful');
+    }
+
+    function gotUsername(username) {
         var gpgDir = getGpgDir(username);
 
         if (gpgDir === null) {
@@ -1827,13 +2045,7 @@ function postImportGpg(params) {
             return;
         }
 
-        gpg = child_process.spawn('/usr/bin/faketime',
-                                  ["2000-01-01 00:00:00", '/usr/bin/gpg', '--status-fd', '1', '--homedir', 'var/gpg/' + gpgDir, '--import'],
-                                  { stdio: ['pipe', 'pipe', 'ignore'] });
-        gpg.stdout.on('readable', gpgRead);
-        gpg.stdin.write(pubkey);
-        gpg.stdin.end();
-        gpg.on('close', gotImportResult);
+        importPublicKey(username, pubkey, identifier, success, fail);
     }
 
     function gotFormData(params, uparams) {
@@ -1944,7 +2156,7 @@ function getDataPostsHtml(params) {
     function selectPosts() {
         // FIXME: check that if it's pubkey we're in the recipients
         // list, and if it's group key we have the group key.
-        var query = 'SELECT s.sha256 FROM nodes AS n, sha256 AS s WHERE n.parent=(SELECT pkey FROM sha256 WHERE sha256=$2) AND n.isupvote=false AND (((n.signkey IN (SELECT primarykey FROM pubkey_alias WHERE username=$1)) OR (n.signkey IN (SELECT primarykey FROM pubkey_own WHERE username=$1)) OR (n.groupKey IN (SELECT secret FROM secrets_alias WHERE username=$1))) OR (n.pkey IN (SELECT parent FROM nodes WHERE isupvote=true AND ((signkey IN (SELECT primarykey FROM pubkey_alias WHERE username=$1)) OR (signkey IN (SELECT primarykey FROM pubkey_own WHERE username=$1)) OR (groupKey IN (SELECT secret FROM secrets_alias WHERE username=$1)))))) AND n.sha256=s.pkey';
+        var query = 'SELECT s.sha256 FROM nodes AS n, sha256 AS s WHERE n.parent=(SELECT pkey FROM sha256 WHERE sha256=$2) AND n.tag=1 AND (((n.signkey IN (SELECT primarykey FROM pubkey_alias WHERE username=$1)) OR (n.signkey IN (SELECT primarykey FROM pubkey_own WHERE username=$1)) OR (n.groupKey IN (SELECT secret FROM secrets_alias WHERE username=$1))) OR (n.pkey IN (SELECT parent FROM nodes WHERE tag=2 AND ((signkey IN (SELECT primarykey FROM pubkey_alias WHERE username=$1)) OR (signkey IN (SELECT primarykey FROM pubkey_own WHERE username=$1)) OR (groupKey IN (SELECT secret FROM secrets_alias WHERE username=$1)))))) AND n.sha256=s.pkey';
         us_nodes_query(query,
                        [username, hash],
                        sendFinal, problem);
@@ -2022,8 +2234,8 @@ function gotPostItem(params) {
             if (decrypt.signkeyId !== null) {
                 by = htmlEscape(decrypt.signkeyId);
             }
-            if (decrypt.symKey !== null) {
-                group = '<span>Group: ' + htmlEscape(decrypt.symKey) + '</span>';
+            if (decrypt.symKeyIdentifier !== null) {
+                group = '<span>Group: ' + htmlEscape(decrypt.symKeyIdentifier) + '</span>';
             }
             if (decrypt.isPubEnc === true) {
                 pubkey = '<span>Private</span>';
@@ -2091,7 +2303,7 @@ function getScriptJs(params) {
 function followUntilSuccess(params, protocol, options, payload, cont, scount) {
     function gotResponse(res) {
         if (res.statusCode >= 200 && res.statusCode <= 299) {
-            cont(params, true);
+            cont(params, true, res);
             return;
         }
         if (res.statusCode >= 301 && res.statusCode <= 399) {
@@ -2243,7 +2455,7 @@ either:
         }
     }
 
-    function gotSymkeyIdentifier(result) {
+    function gotSymKeyIdentifier(result) {
         sendKey('~name(' + result.rows[0].identifier + ')\n~key(' + result.rows[0].secret.toString('base64') + ')');
     }
 
@@ -2276,7 +2488,7 @@ either:
             // TODO: validate hex param first
             us_users_query('SELECT sa.identifier,s.secret FROM secrets_alias AS sa, secrets AS s WHERE sa.username=$1 AND s.read_token=$2 AND sa.secret=s.pkey',
                            [username, '\\x' + key.substr(1)],
-                           gotSymkeyIdentifier, problem);
+                           gotSymKeyIdentifier, problem);
         } else {
             sendResponse(params, 400, 'Invalid key value');
             return;
@@ -2295,16 +2507,15 @@ either:
     getFormData(params, gotFormData);
 }
 
-// FIXME: check for existing identifier first!!
-function postGenerateUserKey(params) {
-    var username, identifier, shasum, hashparts = [], wtokenbuf, secret;
+function importGroupKey(username, secret, identifier, success, fail) {
+    var shasum, hashparts = [], wtokenbuf;
 
     function insertedAlias(result) {
         if (result === null) {
-            sendResponse(params, 500, 'Failed to generate a new key');
+            fail();
             return;
         }
-        redirectTo(params, '/keys');
+        success();
     }
 
     function insertedKey(result) {
@@ -2347,27 +2558,38 @@ function postGenerateUserKey(params) {
         shasum.end();
     }
 
-    function gotBytes(err, buf) {
-        secret = buf;
+    // First, do SHA512 of the secret,
+    // take the low 144 bits as base64 - this is the Write key.
+    // take the sha256 of this to get the Read key.
+    // The low 32 bits as hex are the "key id", though any amount
+    // of the Read key could be used.
+
+    shasum = crypto.createHash('sha512');
+    shasum.on('readable', shasumRead);
+    shasum.on('end', shasumEnd);
+    shasum.write(secret);
+    shasum.end();
+}
+
+// FIXME: check for existing identifier first!!
+function postGenerateUserKey(params) {
+    var identifier, username;
+
+    function success() {
+        redirectTo(params, '/keys');
+    }
+
+    function fail() {
+        sendResponse(params, 500, 'Failed to generate a new key');
+    }
+
+    function gotBytes(err, secret) {
         if (err !== null) {
-            sendResponse(params, 500, 'Failed to generate a new key');
+            fail();
             return;
         }
 
-        // First, do SHA512 of the secret,
-        // take the low 144 bits as base64 - this is the Write key.
-        // take the sha256 of this to get the Read key.
-        // The low 32 bits as hex are the "key id", though any amount
-        // of the Read key could be used.
-
-        shasum = crypto.createHash('sha512');
-        shasum.on('readable', shasumRead);
-        shasum.on('end', shasumEnd);
-        // seems like a bug, can't hash the empty string
-        if (buf.length > 0) {
-            shasum.write(buf);
-        }
-        shasum.end();
+        importGroupKey(username, secret, identifier, success, fail);
     }
 
     function gotUsername(u) {
@@ -2762,6 +2984,7 @@ function postPostInner(params, useSign, toSymKey, toPubKey, thePost, cont, fail)
             if (useSign && (toSymKey === null)) {
                 args.push('-s');
             }
+            console.log(args);
             cipher = child_process.spawn('/usr/bin/faketime', args, { stdio: ['pipe', 'pipe', 'ignore'] });
             enc = '';
             cipher.stdout.on('readable', cipherRead);

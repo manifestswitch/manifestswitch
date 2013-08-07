@@ -722,6 +722,44 @@ function postDataItem(params) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+function postWriteToken(params) {
+    var fingerprint, token;
+
+    function fail() {
+        sendResponse(params, 500, 'Could not generate key');
+    }
+
+    function insertedToken(result) {
+        sendResponse(params, 200, token.toString('hex'));
+    }
+
+    function gotBytes(err, bytes) {
+        token = bytes;
+        if (err !== null) {
+            fail();
+            return;
+        }
+
+        ds_refers_query('INSERT INTO fingerprint_alias (write_key, fingerprint) VALUES ($1, $2)',
+                        ['\\x' + bytes.toString('hex'), '\\x' + fingerprint],
+                        insertedToken, fail);
+
+    }
+
+    function gotFormData(params, uparams) {
+        fingerprint = uparams.fingerprint
+        if (fingerprint.match(fingerRegex) === null) {
+            sendResponse(params, 400, 'Invalid fingerprint');
+            return;
+        }
+        crypto.randomBytes(18, gotBytes);
+    }
+
+    getFormData(params, gotFormData);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 function getDataItem(hash, cb) {
     function selectFail(err) {
         cb(null);
@@ -971,6 +1009,10 @@ var places_exact = {
             { type: 'text/plain', action: getDataResultPlain },
             { type: 'text/html', action: getDataResultHtml }
         ],
+    },
+
+    '/token': {
+        'POST': postWriteToken
     },
 
     '/style': {

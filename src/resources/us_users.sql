@@ -93,12 +93,12 @@ CREATE TABLE nodes (
        root integer, -- the ancestor with no parent, or self. NULL if we don't know yet.
        -- "parent" field contains the upvoted item. may be null if we
        -- don't know yet
-       isupvote boolean
+       tag smallint
 );
 CREATE INDEX nodes_pkey ON nodes (pkey);
 CREATE INDEX nodes_sha256 ON nodes (sha256);
 CREATE INDEX nodes_parent ON nodes (parent);
-CREATE INDEX nodes_isupvote ON nodes (isupvote);
+CREATE INDEX nodes_tag ON nodes (tag);
 
 -- we specifically remember the content that appears in channels which
 -- is encrypted to private keys
@@ -137,6 +137,13 @@ CREATE TABLE not_recipients (
 CREATE INDEX not_recipients_pkey ON not_recipients (pkey);
 CREATE INDEX not_recipients_pubkey_node ON not_recipients (pubkey, node);
 
+CREATE TABLE imported_pubkey (
+       pkey serial,
+       node integer,
+       primarykey integer
+);
+CREATE INDEX imported_pubkey_pkey ON imported_pubkey (pkey);
+CREATE INDEX imported_pubkey_node_primarykey ON imported_pubkey (node, primarykey);
 
 -- -----------------------------------------------
 -- SECRETS

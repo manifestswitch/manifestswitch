@@ -42,7 +42,7 @@ CREATE INDEX channel_content_read_key_sha256 ON channel_content (read_key, sha25
 -- (as opposed to the normal map of sha256)
 CREATE TABLE fingerprint_alias (
        pkey serial, -- PRIMARY KEY;
-       write_key text,
+       write_key bytea,
        fingerprint bytea
 );
 CREATE INDEX fingerprint_alias_pkey ON fingerprint_alias (pkey);
