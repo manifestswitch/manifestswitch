@@ -1709,6 +1709,7 @@ function getDecrypt(params, data, cont) {
             return;
         }
         keys = result.rows;
+        tryUserKeys();
     }
 
     function listPacketsEnd() {
