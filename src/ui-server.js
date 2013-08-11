@@ -2990,7 +2990,7 @@ function postPostInner(params, useSign, toSymKey, toPubKey, thePost, cont, fail)
         }
 
         if ((toSymKey !== null) && !hasGroup) {
-            us_keys_query('SELECT s.secret, s.write_token FROM secrets AS s, secrets_alias AS sa WHERE sa.username=$1 AND sa.read_token=$2 AND sa.secret=s.pkey',
+            us_keys_query('SELECT s.secret, s.write_token FROM secrets AS s, secrets_alias AS sa WHERE sa.username=$1 AND s.read_token=$2 AND sa.secret=s.pkey',
                           [username, '\\x' + toSymKey],
                           gotUserKey);
             return;
