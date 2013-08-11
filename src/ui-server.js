@@ -1582,13 +1582,13 @@ before we hit the right one (or not).
 function getDecrypt(params, data, cont) {
     var gpgDir, ch = '', isPubEnc = false, isSymEnc = null, hasPubKey = null, gotPubDec = null,
     keys, key, gpg, gpgStatus, decData, sigRes = '', partial = data, symKeyIdentifier = null, symKeyPkey = null,
-    signkeyId = null, sigfinger = null, username;
+    symKeyReadToken = null, signkeyId = null, sigfinger = null, username;
 
     // TODO: return the key signed with and encrypted to if present.
 
     function finish() {
         cont({ data: partial, isPubEnc: isPubEnc, gotPubDec: gotPubDec, isSymEnc: isSymEnc,
-               symKeyIdentifier: symKeyIdentifier, symKeyPkey: symKeyPkey,
+               symKeyIdentifier: symKeyIdentifier, symKeyPkey: symKeyPkey, symKeyReadToken: symKeyReadToken,
                signkeyId: signkeyId, sigfinger: sigfinger, hasPubKey: hasPubKey });
     }
 
@@ -1626,6 +1626,7 @@ function getDecrypt(params, data, cont) {
             }
             // signature check failed
             symKeyIdentifier = key.identifier;
+            symKeyReadToken = key.read_token;
             symKeyPkey = key.pkey;
             var m = sigErrRegex.exec(sigRes);
             if (m !== null) {
@@ -1637,6 +1638,7 @@ function getDecrypt(params, data, cont) {
         }
 
         symKeyIdentifier = key.identifier;
+        symKeyReadToken = key.read_token;
         symKeyPkey = key.pkey;
         var m = sigValidRegex.exec(sigRes);
         if (m !== null) {
@@ -1717,7 +1719,7 @@ function getDecrypt(params, data, cont) {
         if (ch.substr(0, symkeyStart.length) === symkeyStart) {
             //loop through the secrets trying each in turn
             isSymEnc = true;
-            us_keys_query('SELECT s.pkey,sa.identifier,s.secret FROM secrets AS s, secrets_alias AS sa WHERE sa.username=$1 AND sa.secret=s.pkey',
+            us_keys_query('SELECT s.pkey,sa.identifier,s.secret,s.read_token FROM secrets AS s, secrets_alias AS sa WHERE sa.username=$1 AND sa.secret=s.pkey',
                           [username],
                           gotUserKeys);
             return;
@@ -2253,12 +2255,14 @@ function gotPostItem(params) {
                 pubkey = '<span>Private</span>';
             }
         }
+        var replyArgs = decrypt.symKeyReadToken !== null ? '&group=' + decrypt.symKeyReadToken.toString('base64') : '';
+
         var title = '';
         var body = ('<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body>' + htmlEscape(title) + '<h2 class="hash">' +
                     hash +
                     '</h2><pre>' +
                     htmlEscape(data.replace(parentsRegex, '')) +
-                    '</pre><div>By: ' + by + ' ' + verified + '</div>' + group + pubkey + '<form action="/vote" method="POST"><input type="submit" name="vote" value="upvote"></form>' + parentLink + '<div><a href="/posts?parent=' + hash + '">Comments</a><div><a href="/posts/form?parent=' + hash + '">Reply</a></div></div><div></div><script type="text/javascript" src="/script?v=0"></script></body></html>');
+                    '</pre><div>By: ' + by + ' ' + verified + '</div>' + group + pubkey + '<form action="/vote" method="POST"><input type="submit" name="vote" value="upvote"></form>' + parentLink + '<div><a href="/posts?parent=' + hash + '">Comments</a><div><a href="/posts/form?parent=' + hash + replyArgs + '">Reply</a></div></div><div></div><script type="text/javascript" src="/script?v=0"></script></body></html>');
 
         sendResponse(params, 200, body);
     }
