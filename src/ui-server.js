@@ -1690,7 +1690,7 @@ function getDecrypt(params, data, cont) {
 
         key = keys.pop();
         gpg = child_process.spawn('/usr/bin/gpg',
-                                  ['-q', '--batch', '--status-fd', '3', '--passphrase-fd', '4', '--homedir', 'var/gpg/' + gpgDir],
+                                  ['-q', '--batch', '--status-fd', '3', '--passphrase-fd', '0', '--homedir', 'var/gpg/' + gpgDir],
                                   { stdio: ['pipe', 'pipe', 'ignore', 'pipe', 'pipe'] });
 
         ch = '';
@@ -1698,7 +1698,7 @@ function getDecrypt(params, data, cont) {
         gpg.stdout.on('close', checkKeyEnd);
         gpg.stdout.on('readable', signatureRead);
         gpg.stdio[3].on('readable', signatureResultRead);
-        gpg.stdio[4].write(key.secret);
+        gpg.stdin.write(key.secret.toString('hex') + '\n');
         gpg.stdin.write(partial);
         gpg.stdin.end();
     }
@@ -2944,18 +2944,24 @@ function postPostInner(params, useSign, toSymKey, toPubKey, thePost, cont, fail)
           --cipher-algo AES256
           Generally the most recommended cipher to use.
          */
-        var args = ["2000-01-01 00:00:00", '/usr/bin/gpg', '-qac', '--batch', '--no-emit-version', '--passphrase-fd', '3', '--homedir', 'var/gpg/' + gpgDir,
+
+        // uses passphrase-fd 0 because adding 'pipe' 3 doesn't seem
+        // writeable, even without faketime
+        var args = ['2000-01-01 00:00:00', '/usr/bin/gpg', '-qac', '--batch', '--no-emit-version', '--passphrase-fd', '0', '--homedir', 'var/gpg/' + gpgDir,
                     '--s2k-digest-algo', 'SHA512', '--s2k-count', '1024', '--cipher-algo', 'AES256'];
         if (useSign) {
             args.push('-s');
         }
+        console.log(args);
+
         cipher = child_process.spawn('/usr/bin/faketime', args,
-                                     { stdio: ['pipe', 'pipe', 'ignore', 'pipe'] });
+                                     { stdio: ['pipe', 'pipe', 'ignore'] });
 
         enc = '';
         cipher.stdout.on('readable', cipherRead);
         cipher.stdout.on('end', finishGroup);
-        cipher.stdio[3].write(key);
+
+        cipher.stdin.write(key.toString('hex') + '\n');
         cipher.stdin.write(thePost);
         cipher.stdin.end();
     }
