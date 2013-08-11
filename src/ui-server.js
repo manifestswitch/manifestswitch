@@ -1846,8 +1846,6 @@ function postGenerateGpg(params) {
     }
 
     function gotToken() {
-        console.log(tokstr);
-
         if (!tokstr.match(hexCharsRegex)) {
             async_log('Token string not valid: ' + tokstr);
             problem();
@@ -2952,7 +2950,6 @@ function postPostInner(params, useSign, toSymKey, toPubKey, thePost, cont, fail)
         if (useSign) {
             args.push('-s');
         }
-        console.log(args);
 
         cipher = child_process.spawn('/usr/bin/faketime', args,
                                      { stdio: ['pipe', 'pipe', 'ignore'] });
@@ -2991,7 +2988,6 @@ function postPostInner(params, useSign, toSymKey, toPubKey, thePost, cont, fail)
             if (useSign && (toSymKey === null)) {
                 args.push('-s');
             }
-            console.log(args);
             cipher = child_process.spawn('/usr/bin/faketime', args, { stdio: ['pipe', 'pipe', 'ignore'] });
             enc = '';
             cipher.stdout.on('readable', cipherRead);
