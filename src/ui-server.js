@@ -2931,7 +2931,7 @@ function postPostInner(params, useSign, toSymKey, toPubKey, thePost, cont, fail)
             return;
         }
         var key = result.rows[0].secret;
-        var writeToken = result.rows[0].write_token;
+        writeToken = result.rows[0].write_token;
 
         var gpgDir = getGpgDir(username);
         if (gpgDir === null) {
