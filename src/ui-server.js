@@ -1625,7 +1625,7 @@ function getDecrypt(params, data, cont) {
                 return;
             }
             // signature check failed
-            symKey = key.identifier;
+            symKeyIdentifier = key.identifier;
             symKeyPkey = key.pkey;
             var m = sigErrRegex.exec(sigRes);
             if (m !== null) {
@@ -1636,7 +1636,7 @@ function getDecrypt(params, data, cont) {
             return;
         }
 
-        symKey = key.identifier;
+        symKeyIdentifier = key.identifier;
         symKeyPkey = key.pkey;
         var m = sigValidRegex.exec(sigRes);
         if (m !== null) {
