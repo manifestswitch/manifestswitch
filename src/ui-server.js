@@ -827,10 +827,10 @@ function refreshPeerContent(params, username, cont, failed) {
             var first = true;
             for (var c in cs) {
                 if (first) {
-                    pathstr += '?c=' + c + '.' + cs[c];
+                    pathstr += '?c=' + c.replace(unreplaceB64Regex, unreplaceB64) + '.' + cs[c];
                     first = false;
                 } else {
-                    pathstr += '.' + c + '.' + cs[c];
+                    pathstr += '.' + c.replace(unreplaceB64Regex, unreplaceB64) + '.' + cs[c];
                 }
             }
         }
