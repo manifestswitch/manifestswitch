@@ -1191,7 +1191,7 @@ function authenticate_continue(params, username) {
 
     function createdSession(result) {
         params.cookies.s = { value: sessionId };
-        redirectTo(params, '/login/result');
+        redirectTo(params, '/');
     }
 
     function gotSessionId(sessId) {
@@ -1204,7 +1204,7 @@ function authenticate_continue(params, username) {
 
     function cleared() {
         if (!savedResult) {
-            redirectTo(params, '/login/result');
+            sendResponse(params, 403, 'Login failed');
             return;
         }
         createSessionId(gotSessionId);
@@ -1327,7 +1327,7 @@ function postLogout(params) {
     deleteSession(params.cookies.s.value, do_nothing);
     // TODO: make this expired instead
     delete params.cookies.s;
-    redirectTo(params, '/logout/result');
+    redirectTo(params, '/');
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -3066,28 +3066,12 @@ var places_exact = {
         'POST': postLogin
     },
 
-    '/login/result': {
-        'GET': [
-            { type: 'application/json', action: getLoginResultJson },
-            { type: 'text/plain', action: getLoginResultPlain },
-            { type: 'text/html', action: getLoginResultHtml }
-        ]
-    },
-
     '/register': {
         'POST': postRegister
     },
 
     '/logout': {
         'POST': postLogout
-    },
-
-    '/logout/result': {
-        'GET': [
-            { type: 'application/json', action: getLogoutResultJson },
-            { type: 'text/plain', action: getLogoutResultPlain },
-            { type: 'text/html', action: getLogoutResultHtml }
-        ]
     },
 
     '/posts': {
