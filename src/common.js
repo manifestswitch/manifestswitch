@@ -165,6 +165,10 @@ function trace(msg) {
 var hashonly_re = /^([0-9a-f]{64})$/;
 var hash_re = /([0-9a-f]{64})/g;
 
+var fingerRegex = /^[0-9A-F]{40}$/;
+var shab64Regex = /^[0-9a-zA-Z_-]{43}~?$/;
+var ushab64Regex = /^[0-9a-zA-Z\/\+]{43}=?$/;
+
 function isHexCode(ch) {
     return ((ch >= 48) && (ch <= 57)) || ((ch >= 97) && (ch <= 104));
 }
