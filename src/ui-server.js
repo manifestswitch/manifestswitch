@@ -1582,7 +1582,7 @@ before we hit the right one (or not).
 function getDecrypt(params, data, cont) {
     var gpgDir, ch = '', isPubEnc = false, isSymEnc = null, hasPubKey = null, gotPubDec = null,
     keys, key, gpg, gpgStatus, decData, sigRes = '', partial = data, symKeyIdentifier = null, symKeyPkey = null,
-    signkeyId = null, sigfinger = null;
+    signkeyId = null, sigfinger = null, username;
 
     // TODO: return the key signed with and encrypted to if present.
 
@@ -1758,7 +1758,8 @@ function getDecrypt(params, data, cont) {
         gpg.stdin.end();
     }
 
-    function gotUsername(username) {
+    function gotUsername(u) {
+        username = u;
         gpgDir = getGpgDir(username);
 
         if (gpgDir === null) {
