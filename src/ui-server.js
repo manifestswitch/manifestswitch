@@ -2303,7 +2303,7 @@ function getPostsFormHtml(params) {
     }
 
     if ('group' in query) {
-        if (query.group.match(ushab64Regex) === null) {
+        if (query.group.match(shab64Regex) === null) {
             // TODO: prettier error handling
             sendResponse(params, 400, 'Invalid group key');
             return;
@@ -2349,7 +2349,7 @@ function gotPostItem(params) {
                 pubkey = '<span>Private</span>';
             }
         }
-        var replyArgs = decrypt.symKeyReadToken !== null ? '&group=' + decrypt.symKeyReadToken.toString('base64') : '';
+        var replyArgs = decrypt.symKeyReadToken !== null ? '&group=' + decrypt.symKeyReadToken.toString('base64').replace(unreplaceB64Regex, unreplaceB64) : '';
 
         var title = '';
         var body = ('<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body>' + htmlEscape(title) + '<h2 class="hash">' +
@@ -2855,7 +2855,7 @@ function getKeys(params) {
         body += '</ul><form method="POST" action="/key/import"><div><input type="text" name="identifier"></div><div><textarea name="pubkey"></textarea></div><input type="submit" name="action" value="Import"></form><div><h2>Groups</h2><ul>';
 
         for (var i = 0, len = groupKeys.length; i < len; ++i) {
-            body += '<li><span class="hash">' + htmlEscape(groupKeys[i].read_token.toString('hex', 28, 32).toUpperCase()) + '</span> ' + htmlEscape(groupKeys[i].identifier) + '<form action="/posts/form" method="GET"><input type="hidden" name="group" value="' + groupKeys[i].read_token.toString('base64') + '"><input type="submit" value="Send message"></form></li>';
+            body += '<li><span class="hash">' + htmlEscape(groupKeys[i].read_token.toString('hex', 28, 32).toUpperCase()) + '</span> ' + htmlEscape(groupKeys[i].identifier) + '<form action="/posts/form" method="GET"><input type="hidden" name="group" value="' + groupKeys[i].read_token.toString('base64').replace(unreplaceB64Regex, unreplaceB64) + '"><input type="submit" value="Send message"></form><a href="/grouproots?group=' + groupKeys[i].read_token.toString('base64').replace(unreplaceB64Regex, unreplaceB64) + '">View messages</a></li>';
         }
         body += '</ul><form method="POST" action="/key/generate"><input type="text" name="identifier"><input type="submit" name="action" value="Generate"></form></div><div><form action="/key/send" method="POST"><label for="sendkey">Send key</label> <select name="key" id="sendkey">';
 
