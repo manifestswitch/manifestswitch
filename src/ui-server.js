@@ -2333,7 +2333,8 @@ function gotPostItem(params) {
         // FIXME: clear on logout!!!!
         params.headers['Cache-Control'] = 'max-age=300';
 
-        var parentLink = (parent === null) ? '' : '<div><a href="/post/' + parent + '">Parent</a></div>';
+        var parentLink = (parent === null) ? (decrypt.symKeyReadToken !== null ? '<a href="/grouproots?group=' + decrypt.symKeyReadToken.toString('base64').replace(unreplaceB64Regex, unreplaceB64) + '">' + decrypt.symKeyIdentifier + ' comments</a>' : '') : '<div><a href="/post/' + parent + '">Parent</a></div>';
+
         var verified = '<span>(Unverified)</span>', group = '', pubkey = '', by = 'Anonymous';
         if (decrypt !== null) {
             if (decrypt.sigfinger !== null) {
