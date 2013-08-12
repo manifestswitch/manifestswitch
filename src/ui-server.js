@@ -2166,7 +2166,7 @@ function getDataPostsHtml(params) {
         // list, and if it's group key we have the group key.
         var query = 'SELECT s.sha256 FROM nodes AS n, sha256 AS s WHERE n.parent=(SELECT pkey FROM sha256 WHERE sha256=$2) AND n.tag=1 AND (((n.signkey IN (SELECT primarykey FROM pubkey_alias WHERE username=$1)) OR (n.signkey IN (SELECT primarykey FROM pubkey_own WHERE username=$1)) OR (n.groupKey IN (SELECT secret FROM secrets_alias WHERE username=$1))) OR (n.pkey IN (SELECT parent FROM nodes WHERE tag=2 AND ((signkey IN (SELECT primarykey FROM pubkey_alias WHERE username=$1)) OR (signkey IN (SELECT primarykey FROM pubkey_own WHERE username=$1)) OR (groupKey IN (SELECT secret FROM secrets_alias WHERE username=$1)))))) AND n.sha256=s.pkey';
         us_nodes_query(query,
-                       [username, hash],
+                       [username, '\\x' + hash],
                        sendFinal, problem);
     }
 
