@@ -2540,10 +2540,16 @@ function importGroupKey(username, secret, identifier, success, fail) {
         success();
     }
 
-    function insertedKey(result) {
+    function selectedPkey(result) {
         us_keys_query("INSERT INTO secrets_alias (username, identifier, secret, ignore_new) VALUES ($1, $2, $3, false)",
                       [username, identifier, result.rows[0].pkey],
-                      insertedAlias);
+                      insertedAlias, fail);
+    }
+
+    function insertedKey(result) {
+        us_users_query('SELECT pkey FROM secrets WHERE secret=$1',
+                       ['\\x' + secret.toString('hex')],
+                       selectedPkey, fail);
     }
 
     function shasumRead() {
@@ -2557,9 +2563,9 @@ function importGroupKey(username, secret, identifier, success, fail) {
         var rtokenbuf = Buffer.concat(hashparts);
         var rtoken = rtokenbuf.toString('base64');
 
-        us_keys_query("INSERT INTO secrets (secret, write_token, read_token) VALUES ($1, $2, $3) RETURNING pkey",
+        us_keys_query("INSERT INTO secrets (secret, write_token, read_token) SELECT $1, $2, $3 WHERE NOT EXISTS (SELECT 1 FROM secrets WHERE secret=$1)",
                       ['\\x' + secret.toString('hex'), '\\x' + wtokenbuf.toString('hex'), '\\x' + rtokenbuf.toString('hex')],
-                      insertedKey);
+                      insertedKey, fail);
     }
 
     function shasumEnd() {
