@@ -923,14 +923,20 @@ function refreshPeerContent(params, username, cont, failed) {
     }
 
     function continueFetchLists(cs, ks) {
+        var ksv;
         if ((cs === null) && (ks === null)) {
             decAndCheck();
         } else {
             if (cs !== null) {
                 for (var it in cs) {
-                    getDataList(it, cs[it], it in ks ? ks[it] : null);
+                    if ((ks !== null) && (it in ks)) {
+                        ksv = ks[it];
+                        delete ks[it];
+                    } else {
+                        ksv = null;
+                    }
+                    getDataList(it, cs[it], ksv);
                     delete cs[it];
-                    delete ks[it];
                     return;
                 }
             } else {
