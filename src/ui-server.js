@@ -2202,6 +2202,94 @@ function getDataPostsHtml(params) {
     getUsername(params, gotUsername);
 }
 
+// Show all the root nodes associated with the group.
+// Initially it doesn't need to consider nodes that are non-root but
+// also not replies to the same group.
+function getGroupRootsPageHtml(params) {
+    var body, status, hash = null;
+    var waiting = 0, username, groupKey;
+
+    function problem(err) {
+        sendResponse(params, 500, 'There was a problem');
+    }
+
+    function sendFinal(result) {
+        var html = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body><ul>';
+        var posts = result.rows;
+        for (var k = 0, klen = posts.length; k < klen; ++k) {
+            var hex = posts[k].sha256.toString('hex');
+            html += '<li><a class="hash" href="/post/' + hex + '">' + hex + '</a></li>';
+        }
+        html += '</ul><div><a href="/posts/form' + (hash !== null ? '?parent=' + hash : '') + '">Add</a></div>';
+        html += '<div><a href="/">Home</a></div></body></html>';
+
+        sendResponse(params, 200, html);
+    }
+
+    // Note: selecting parent=NULL won't catch replies to content we
+    // haven't verified, eg. the content "Sport". We may be better off
+    // leaving the parent=$2 selection out and looping over the
+    // results manually.
+    // However, it is possible to select for these too, we just need
+    // to check parent!=null and parent is not a verified post.
+    // In a chain of replies to an unverified account, we need to keep
+    // following until we reach the root node, and only display the
+    // nearest one to that, otherwise each reply will look like a
+    // separate conversation.
+    function selectPosts() {
+
+        us_users_query('SELECT sh.sha256 FROM nodes AS n, sha256 AS sh, secrets AS s, secrets_alias AS sa WHERE s.read_token=$2 AND sa.secret=s.pkey AND sa.username=$1 AND n.groupKey=s.pkey AND sh.pkey=n.sha256 AND n.parent IS NULL',
+                       [username, '\\x' + groupKey],
+                       sendFinal, problem);
+
+        // FIXME: check that if it's pubkey we're in the recipients
+        // list, and if it's group key we have the group key.
+/*
+        var query = 'SELECT s.sha256 FROM nodes AS n, sha256 AS s WHERE n.parent=(SELECT pkey FROM sha256 WHERE sha256=$2) AND n.tag=1 AND (((n.signkey IN (SELECT primarykey FROM pubkey_alias WHERE username=$1)) OR (n.signkey IN (SELECT primarykey FROM pubkey_own WHERE username=$1)) OR (n.groupKey IN (SELECT secret FROM secrets_alias WHERE username=$1))) OR (n.pkey IN (SELECT parent FROM nodes WHERE tag=2 AND ((signkey IN (SELECT primarykey FROM pubkey_alias WHERE username=$1)) OR (signkey IN (SELECT primarykey FROM pubkey_own WHERE username=$1)) OR (groupKey IN (SELECT secret FROM secrets_alias WHERE username=$1)))))) AND n.sha256=s.pkey';
+        us_nodes_query(query,
+                       [username, hash],
+                       sendFinal, problem);
+*/
+
+    }
+
+    function gotUsername(u) {
+        username = u;
+        if (username === null) {
+            status = 403;
+            body = '<h1>403 Forbidden: You must be logged in </h1><a href="/">Continue</a>';
+            sendResponse(params, status, body);
+            return;
+        }
+
+        var query = url.parse(params.request.url, true).query;
+
+        if ('group' in query) {
+            if (query.group.match(shab64Regex) === null) {
+                // TODO: prettier error handling
+                sendResponse(params, 400, 'Invalid group key');
+                return;
+            }
+            groupKey = (new Buffer(query.group, 'base64')).toString('hex');
+        }
+
+        // a) If we do not yet have an up-to-date list of our network's
+        // current upvotes (non-repudiated), retrieve that by looping over
+        // each peer.
+        // a.1) For each peer, download everything they've ever signed
+        // a.2) For each of those content, get a filter list of their upvotes, downvotes, and novotes
+        // a.3) Where multiple votes are cast on the same content by a user, take only the most recent one.
+        // b) For each of the upvotes above, download the content it references.
+        // c) Filter the list to only those containing "~post($hash)"
+
+        // lists contains all of the newly discovered hashes (possibly
+        // with duplicates)
+        refreshPeerContent(params, username, selectPosts);
+    }
+
+    getUsername(params, gotUsername);
+}
+
 function getPostsFormHtml(params) {
     var query = url.parse(params.request.url, true).query, parent = null, groupKey = null;
 
@@ -3144,6 +3232,12 @@ var places_exact = {
     '/keys': {
         'GET': [
             { type: 'text/html', action: getKeys }
+        ]
+    },
+
+    '/grouproots': {
+        'GET': [
+            { type: 'text/html', action: getGroupRootsPageHtml }
         ]
     },
 
