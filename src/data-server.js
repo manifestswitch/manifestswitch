@@ -279,6 +279,7 @@ function getDataListPlain(params) {
         var body = '', status;
 
         if (err !== null) {
+            async_log(JSON.stringify(err));
             sendResponse(params, 500, 'Could not fetch list');
             return;
         }
