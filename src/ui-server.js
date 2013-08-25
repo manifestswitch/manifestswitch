@@ -144,6 +144,9 @@ var ui_server_css_gzip = new Buffer('H4sICIuczFECA2RhdGEtc2VydmVyLmNzcwDTy0gszlC
 var ui_server_js = _UI_SERVER_JS_;
 var ui_server_js_gzip = null;
 
+var jquery_js = _JQUERY_JS_;
+var jquery_js_gzip = null;
+
 // what we are ultimately looking for is the hashes of all our
 // friend's signature fingerprints, and hash of our encryption
 // fingerprint
@@ -2411,6 +2414,14 @@ function getScriptJs(params) {
     sendRawResponse(params, 200, ui_server_js);
 }
 
+function getJqueryJs(params) {
+    params.contentType = 'text/javascript; charset=utf-8';
+    // 365 days
+    params.headers['Cache-Control'] = 'max-age=31536000';
+    // TODO: pre gzip -9 this into a new Buffer
+    sendRawResponse(params, 200, jquery_js);
+}
+
 function followUntilSuccess(params, protocol, options, payload, cont, scount) {
     function gotResponse(res) {
         if (res.statusCode >= 200 && res.statusCode <= 299) {
@@ -3251,6 +3262,12 @@ var places_exact = {
     '/script': {
         'GET': [
             { type: 'text/javascript', action: getScriptJs }
+        ]
+    },
+
+    '/jquery': {
+        'GET': [
+            { type: 'text/javascript', action: getJqueryJs }
         ]
     },
 
