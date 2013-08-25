@@ -1499,12 +1499,6 @@ list rated: same as above, but sorted by friend's upvotes within a time period
 //
 // The hash parameter is the node to be considered.
 
-function getPostsDataListContinue (data) {
-    status = 200;
-    body = '<h1>200 OK: Page here: ' + data + '</h1><a href="/">Continue</a>';
-    sendResponse(params, status, body);
-}
-
 var dateRegex = /\[date\]: iso8601:(.+)\n/;
 
 // If there is an upvote, returns the thing being upvoted
@@ -2496,10 +2490,6 @@ function postFailed(params) {
     sendResponse(params, 500, 'Could not submit post');
 }
 
-function postFinished(params, hex) {
-    redirectTo(params, '/posts/form/result?sha256=' + hex);
-}
-
 function postKeySend(params) {
     /*
       If the target is a Pubkey, encrypt to the Pubkey, sign by us, post on our own channel
@@ -2536,6 +2526,10 @@ either:
 
     function problem() {
         sendResponse(params, 500, 'Could not send key');
+    }
+
+    function postFinished(params, hex) {
+        redirectTo(params, '/keys');
     }
 
     function gotSymKeyTo(result) {
@@ -3147,10 +3141,19 @@ function postPostInner(params, useSign, toSymKey, toPubKey, thePost, cont, fail)
 }
 
 function postPost(params) {
+    var toPubkey = null, toSymKey = null, parent = null, postPart = '';
+
+    function postFinished(params, hex) {
+        if (parent !== null) {
+            redirectTo(params, '/posts?parent=' + hex);
+        } else if (toSymKey !== null) {
+            redirectTo(params, '/grouproots?group=' + (new Buffer(toSymKey, 'hex')).toString('base64').replace(unreplaceB64Regex, unreplaceB64));
+        } else {
+            redirectTo(params, '/post/' + hex);
+        }
+    }
 
     function gotPostPost(params, query) {
-        var toPubkey = null, toSymKey = null, postPart = '';
-
         if ('pubKey' in query) {
             toPubkey = query.keyid;
         }
