@@ -1505,14 +1505,14 @@ function getPostsDataListContinue (data) {
     sendResponse(params, status, body);
 }
 
-var dateRegex = /~date\((\d+)\)/;
+var dateRegex = /\[date\]: iso8601:(.+)\n/;
 
 // If there is an upvote, returns the thing being upvoted
 var upvotes = {
     // 'hex': hex
 };
 
-var upvoteRegex = /~upvote\(([0-9a-f]{64})\)/;
+var upvoteRegex = /\[upvote\]: sha256:([0-9a-f]{64})\n/;
 
 var sentGroupKeyRegex = /~key\(([0-9a-zA-Z\/\+]{43}=)\)/;
 
@@ -1813,7 +1813,7 @@ var parents = {
     // 'hex': hex
 };
 
-var parentsRegex = /~post\(([0-9a-f]{64})\)/;
+var parentsRegex = /\[parent\]: sha256:([0-9a-f]{64})\n/;
 
 function getPostParentCached(hex, data) {
     if (!(hex in parents)) {
@@ -3164,10 +3164,11 @@ function postPost(params) {
                 redirectTo(params, '/error/400');
                 return;
             }
-            postPart = '~post(' + query.parent + ')\n';
+            parent = query.parent;
+            postPart = '[parent]: sha256:' + parent + '\n';
         }
         postPostInner(params, toSymKey === null, toSymKey, toPubkey,
-                      postPart + '~date(' + Date.now() + ')\n' + query.content,
+                      query.content + '\n[date]: iso8601:' + (new Date()).toISOString() + '\n' + postPart,
                       postFinished, postFailed);
     }
 
