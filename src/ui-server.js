@@ -2136,7 +2136,14 @@ function getDataPostsHtml(params) {
     }
 
     function sendFinal(result) {
-        var html = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body><ul>';
+        // FIXME: by default comment in same manner as hash: normally either signed plaintext or group key
+        var html = ('<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body>' +
+                    '    <form action="/posts" method="POST">\n' +
+                    '      <input type="hidden" name="parent" value="' + hash + '">\n' +
+                    '      <textarea name="content"></textarea>\n' +
+                    '      <input value="submit" type="submit">\n' +
+                    '    </form>' +
+                    '<ul>');
         var posts = result.rows;
         for (var k = 0, klen = posts.length; k < klen; ++k) {
             var hex = posts[k].sha256.toString('hex');
@@ -2211,14 +2218,20 @@ function getGroupRootsPageHtml(params) {
     }
 
     function sendFinal(result) {
-        var html = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body><ul>';
+        var html = ('<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body>' +
+                    '    <form action="/posts" method="POST">\n' +
+                    '      <input type="hidden" name="symKey" value="' + groupKey + '">\n' +
+                    '      <textarea name="content"></textarea>\n' +
+                    '      <input value="submit" type="submit">\n' +
+                    '    </form>' +
+                    '<ul>');
         var posts = result.rows;
         for (var k = 0, klen = posts.length; k < klen; ++k) {
             var hex = posts[k].sha256.toString('hex');
-            html += '<li><a class="hash" href="/post/' + hex + '">' + hex + '</a></li>';
+            html += '<li><a class="hash" href="/post/' + hex + '">' + hex + '</a> <a href="/posts?parent=' + hex + '">Comments</a></li>';
         }
         html += '</ul><div><a href="/posts/form' + (hash !== null ? '?parent=' + hash : '') + '">Add</a></div>';
-        html += '<div><a href="/">Home</a></div></body></html>';
+        html += '<div><a href="/">Home</a></div><script type="text/javascript" deferred="deferred" src="/jquery"></script><script type="text/javascript" deferred="deferred" src="/script"></script></body></html>';
 
         sendResponse(params, 200, html);
     }
