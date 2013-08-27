@@ -2127,8 +2127,8 @@ P
 |C22
 */
 
-function getDataPostsHtml(params) {
-    var body, status, hash = null;
+function getDataPosts(params, cont) {
+    var hash = null;
     var waiting = 0, username;
 
     function problem(err) {
@@ -2136,23 +2136,7 @@ function getDataPostsHtml(params) {
     }
 
     function sendFinal(result) {
-        // FIXME: by default comment in same manner as hash: normally either signed plaintext or group key
-        var html = ('<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body>' +
-                    '    <form action="/posts" method="POST">\n' +
-                    '      <input type="hidden" name="parent" value="' + hash + '">\n' +
-                    '      <textarea name="content"></textarea>\n' +
-                    '      <input value="submit" type="submit">\n' +
-                    '    </form>' +
-                    '<ul>');
-        var posts = result.rows;
-        for (var k = 0, klen = posts.length; k < klen; ++k) {
-            var hex = posts[k].sha256.toString('hex');
-            html += '<li><a class="hash" href="/post/' + hex + '">' + hex + '</a></li>';
-        }
-        html += '</ul><div><a href="/posts/form' + (hash !== null ? '?parent=' + hash : '') + '">Add</a></div>';
-        html += '<div><a href="/">Home</a></div></body></html>';
-
-        sendResponse(params, 200, html);
+        cont(params, hash, result);
     }
 
     // Note: selecting parent=NULL won't catch replies to content we
@@ -2177,8 +2161,8 @@ function getDataPostsHtml(params) {
     function gotUsername(u) {
         username = u;
         if (username === null) {
-            status = 403;
-            body = '<h1>403 Forbidden: You must be logged in </h1><a href="/">Continue</a>';
+            var status = 403;
+            var body = '<h1>403 Forbidden: You must be logged in </h1><a href="/">Continue</a>';
             sendResponse(params, status, body);
             return;
         }
@@ -2206,6 +2190,51 @@ function getDataPostsHtml(params) {
     getUsername(params, gotUsername);
 }
 
+function gotDataPostsHtml(params, hash, result) {
+    // FIXME: by default comment in same manner as hash: normally either signed plaintext or group key
+    var html = ('<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body>' +
+                '    <form action="/posts" method="POST">\n' +
+                '      <input type="hidden" name="parent" value="' + hash + '">\n' +
+                '      <textarea name="content"></textarea>\n' +
+                '      <input value="submit" type="submit">\n' +
+                '    </form>' +
+                '<ul>');
+    var posts = result.rows;
+    for (var k = 0, klen = posts.length; k < klen; ++k) {
+        var hex = posts[k].sha256.toString('hex');
+        html += '<li><a class="hash" href="/post/' + hex + '">' + hex + '</a></li>';
+    }
+    html += '</ul><div><a href="/posts/form' + (hash !== null ? '?parent=' + hash : '') + '">Add</a></div>';
+    html += '<div><a href="/">Home</a></div></body></html>';
+
+    sendResponse(params, 200, html);
+}
+
+function gotDataPostsJson(params, hash, result) {
+    // FIXME: by default comment in same manner as hash: normally either signed plaintext or group key
+    var posts = result.rows;
+    var k = 0, klen = posts.length;
+    var str = '[';
+
+    if (k < klen) {
+        str += '"' + posts[k].sha256.toString('hex') + '"';
+        ++k;
+    }
+    for (; k < klen; ++k) {
+        str += ',"' + posts[k].sha256.toString('hex') + '"';
+    }
+    str += ']';
+    sendResponse(params, 200, str);
+}
+
+function getDataPostsHtml(params) {
+    getDataPosts(params, gotDataPostsHtml);
+}
+
+function getDataPostsJson(params) {
+    getDataPosts(params, gotDataPostsJson);
+}
+
 // Show all the root nodes associated with the group.
 // Initially it doesn't need to consider nodes that are non-root but
 // also not replies to the same group.
@@ -2228,7 +2257,7 @@ function getGroupRootsPageHtml(params) {
         var posts = result.rows;
         for (var k = 0, klen = posts.length; k < klen; ++k) {
             var hex = posts[k].sha256.toString('hex');
-            html += '<li><a class="hash" href="/post/' + hex + '">' + hex + '</a> <a href="/posts?parent=' + hex + '">Comments</a></li>';
+            html += '<li><a class="hash" href="/post/' + hex + '">' + hex + '</a> <a class="comments" href="/posts?parent=' + hex + '">Comments</a></li>';
         }
         html += '</ul><div><a href="/posts/form' + (hash !== null ? '?parent=' + hash : '') + '">Add</a></div>';
         html += '<div><a href="/">Home</a></div><script type="text/javascript" deferred="deferred" src="/jquery"></script><script type="text/javascript" deferred="deferred" src="/script"></script></body></html>';
@@ -2332,44 +2361,11 @@ function getPostsFormHtml(params) {
     sendResponse(params, 200, body);
 }
 
-function gotPostItem(params) {
+function gotPostItem(params, cont) {
     var hash, data, parent, decrypt = null;
 
     function printLiteral() {
-        // 5 minutes. Main reason to keep this short is in case
-        // javascript or style is accidentally broken and needs to be
-        // fixed quickly
-        //
-        // FIXME: clear on logout!!!!
-        params.headers['Cache-Control'] = 'max-age=300';
-
-        var parentLink = (parent === null) ? (decrypt.symKeyReadToken !== null ? '<a href="/grouproots?group=' + decrypt.symKeyReadToken.toString('base64').replace(unreplaceB64Regex, unreplaceB64) + '">' + decrypt.symKeyIdentifier + ' comments</a>' : '') : '<div><a href="/post/' + parent + '">Parent</a></div>';
-
-        var verified = '<span>(Unverified)</span>', group = '', pubkey = '', by = 'Anonymous';
-        if (decrypt !== null) {
-            if (decrypt.sigfinger !== null) {
-                verified = '<span>(Verified)</span>';
-            }
-            if (decrypt.signkeyId !== null) {
-                by = htmlEscape(decrypt.signkeyId);
-            }
-            if (decrypt.symKeyIdentifier !== null) {
-                group = '<span>Group: ' + htmlEscape(decrypt.symKeyIdentifier) + '</span>';
-            }
-            if (decrypt.isPubEnc === true) {
-                pubkey = '<span>Private</span>';
-            }
-        }
-        var replyArgs = decrypt.symKeyReadToken !== null ? '&group=' + decrypt.symKeyReadToken.toString('base64').replace(unreplaceB64Regex, unreplaceB64) : '';
-
-        var title = '';
-        var body = ('<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body>' + htmlEscape(title) + '<h2 class="hash">' +
-                    hash +
-                    '</h2><pre>' +
-                    htmlEscape(data.replace(parentsRegex, '')) +
-                    '</pre><div>By: ' + by + ' ' + verified + '</div>' + group + pubkey + '<form action="/vote" method="POST"><input type="submit" name="vote" value="upvote"></form>' + parentLink + '<div><a href="/posts?parent=' + hash + '">Comments</a><div><a href="/posts/form?parent=' + hash + replyArgs + '">Reply</a></div></div><div></div><script type="text/javascript" src="/script?v=0"></script></body></html>');
-
-        sendResponse(params, 200, body);
+        cont(params, hash, data, decrypt, parent);
     }
 
     function gotDecrypt(dec) {
@@ -2400,10 +2396,59 @@ function gotPostItem(params) {
     return gotPostItemLiteral;
 }
 
+function gotPostItemHtml(params, hash, data, decrypt, parent) {
+    var parentLink = (parent === null) ? (decrypt.symKeyReadToken !== null ? '<a href="/grouproots?group=' + decrypt.symKeyReadToken.toString('base64').replace(unreplaceB64Regex, unreplaceB64) + '">' + decrypt.symKeyIdentifier + ' comments</a>' : '') : '<div><a href="/post/' + parent + '">Parent</a></div>';
+
+    var verified = '<span>(Unverified)</span>', group = '', pubkey = '', by = 'Anonymous';
+    if (decrypt !== null) {
+        if (decrypt.sigfinger !== null) {
+            verified = '<span>(Verified)</span>';
+        }
+        if (decrypt.signkeyId !== null) {
+            by = htmlEscape(decrypt.signkeyId);
+        }
+        if (decrypt.symKeyIdentifier !== null) {
+            group = '<span>Group: ' + htmlEscape(decrypt.symKeyIdentifier) + '</span>';
+        }
+        if (decrypt.isPubEnc === true) {
+            pubkey = '<span>Private</span>';
+        }
+    }
+    var replyArgs = decrypt.symKeyReadToken !== null ? '&group=' + decrypt.symKeyReadToken.toString('base64').replace(unreplaceB64Regex, unreplaceB64) : '';
+
+    var title = '';
+    var body = ('<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="/style?v=0"></head><body>' + htmlEscape(title) + '<h2 class="hash">' +
+                hash +
+                '</h2><pre>' +
+                htmlEscape(data.replace(parentsRegex, '')) +
+                '</pre><div>By: ' + by + ' ' + verified + '</div>' + group + pubkey + '<form action="/vote" method="POST"><input type="submit" name="vote" value="upvote"></form>' + parentLink + '<div><a href="/posts?parent=' + hash + '">Comments</a><div><a href="/posts/form?parent=' + hash + replyArgs + '">Reply</a></div></div><div></div><script type="text/javascript" src="/script?v=0"></script></body></html>');
+
+    sendResponse(params, 200, body);
+}
+
+function gotPostItemJson(params, hash, data, decrypt, parent) {
+    sendResponse(params, 200,
+                 JSON.stringify({
+                     hash: hash,
+                     data: data,
+                     symKeyReadToken: decrypt.symKeyReadToken !== null ? decrypt.symKeyReadToken.toString('base64') : null,
+                     symKeyIdentifier: decrypt.symKeyIdentifier,
+                     sigfinger: decrypt.sigfinger,
+                     signkeyId: decrypt.signkeyId,
+                     isPubEnc: decrypt.isPubEnc
+                 }));
+}
+
 function getPostItemHtml(params) {
     var hash = params.urlparts.pathname.substring('/post/'.length);
 
-    getDataItemAndIndex(null, hash, gotPostItem(params));
+    getDataItemAndIndex(null, hash, gotPostItem(params, gotPostItemHtml));
+}
+
+function getPostItemJson(params) {
+    var hash = params.urlparts.pathname.substring('/post/'.length);
+
+    getDataItemAndIndex(null, hash, gotPostItem(params, gotPostItemJson));
 }
 
 function getStyleCss(params) {
@@ -3225,6 +3270,7 @@ var places_exact = {
 
     '/posts': {
         'GET': [
+            { type: 'application/json', action: getDataPostsJson },
             { type: 'text/html', action: getDataPostsHtml }
         ],
         'POST': postPost
@@ -3346,6 +3392,7 @@ var places_regex = [
         re: /^\/post\/([0-9a-f]{64})$/,
         methods: {
             'GET': [
+                { type: 'application/json', action: getPostItemJson },
                 { type: 'text/html', action: getPostItemHtml }
             ]
         }
