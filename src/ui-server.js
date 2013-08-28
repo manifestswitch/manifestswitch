@@ -2256,11 +2256,11 @@ function getGroupRootsPageHtml(params) {
                     '      <textarea name="content"></textarea>\n' +
                     '      <input value="submit" type="submit">\n' +
                     '    </form>' +
-                    '<ul>');
+                    '<ul class="comments">');
         var posts = result.rows;
         for (var k = 0, klen = posts.length; k < klen; ++k) {
             var hex = posts[k].sha256.toString('hex');
-            html += '<li><a class="hash" href="/post/' + hex + '">' + hex + '</a> <a class="comments" href="/posts?parent=' + hex + '">Comments</a></li>';
+            html += '<li><a class="hash" href="/post/' + hex + '">' + hex.substring(0, 8) + '</a><a class="comments" href="/posts?parent=' + hex + '">comments</a></li>';
         }
         html += '</ul><div><a href="/posts/form' + (hash !== null ? '?parent=' + hash : '') + '">Add</a></div>';
         html += '<div><a href="/">Home</a></div><script type="text/javascript" deferred="deferred" src="/jquery"></script><script type="text/javascript" deferred="deferred" src="/markdown"></script><script type="text/javascript" deferred="deferred" src="/script"></script></body></html>';

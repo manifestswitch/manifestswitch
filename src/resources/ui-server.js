@@ -54,9 +54,9 @@ function apply_list_js(roots) {
             var a = this, parent = $(a).parent();
             $.getJSON(a.href, function (data) {
                 function mkreplylink() {
-                    var replylink = $('<a href="/posts/form?group=' + group + '&parent=' + linkHash(a) + '">Reply</a>');
+                    var replylink = $('<a class="reply" href="/posts/form?group=' + group + '&parent=' + linkHash(a) + '">reply</a>');
                     replylink.click(function () {
-                        var form = $('<form method="POST" action="/posts"><textarea name="content"></textarea><input type="hidden" name="symKey" value="' + groupHex + '"><input type="hidden" name="parent" value="' + linkHash(a) + '"><button class="cancel">Cancel</button><input class="submit" type="submit" value="submit"></form>');
+                        var form = $('<form method="POST" action="/posts"><textarea name="content"></textarea><input type="hidden" name="symKey" value="' + groupHex + '"><input type="hidden" name="parent" value="' + linkHash(a) + '"><br><button class="cancel">Cancel</button><input class="submit" type="submit" value="submit"></form>');
                         form.find('input.submit').click(function () {
                             $.post('/posts',
                                    { symKey: groupHex, parent: linkHash(a), content: form.find('textarea').val() },
@@ -78,9 +78,11 @@ function apply_list_js(roots) {
                     return replylink;
                 }
 
-                var pre = $(document.createElement('pre')), replylink = mkreplylink();
-                pre.html(data.data);
-                pre.insertBefore(a);
+                var div = $('<div class="content"></div>'), replylink = mkreplylink();
+                div.html(markdown.toHTML(data.data));
+                div.insertBefore(a);
+                // occurs after ajax because the user should want to
+                // read what they're replying too
                 parent.children('a.comments').after(replylink);
             });
         });
@@ -93,17 +95,17 @@ function apply_list_js(roots) {
         a.click(function () {
             $.getJSON(that.href,
                       function (data) {
-                          a.text(data.length + ' Comments');
+                          a.text(data.length + ' comments');
                           var ul = parent.children('ul');
                           if (ul.length === 0) {
-                              ul = $('<ul></ul>');
+                              ul = $('<ul class="comments"></ul>');
                               parent.append(ul);
                           }
                           var has = ul.find('li a.hash').map(function (i, x) { return linkHash(x); }).toArray();
                           var html = '';
                           for (var i = 0,len=data.length; i < len; ++i) {
                               if (has.indexOf(data[i]) === -1) {
-                                  html += '<li><a class="hash" href="/post/' + data[i] + '">' + data[i] + '</a> <a class="comments" href="/posts?parent=' + data[i] + '">Comments</a></li>';
+                                  html += '<li><a class="hash" href="/post/' + data[i] + '">' + data[i].substring(0, 8) + '</a><a class="comments" href="/posts?parent=' + data[i] + '">comments</a></li>';
                               }
                           }
                           var lis = $(html);
@@ -115,7 +117,7 @@ function apply_list_js(roots) {
 
         $.getJSON(this.href,
                   function (data) {
-                      a.text(data.length + ' Comments');
+                      a.text(data.length + ' comments');
                   });
     });
 }
