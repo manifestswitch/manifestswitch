@@ -3240,7 +3240,7 @@ function postPost(params) {
             postPart = '[parent]: sha256:' + parent + '\n';
         }
         postPostInner(params, toSymKey === null, toSymKey, toPubkey,
-                      query.content + '\n[date]: iso8601:' + (new Date()).toISOString() + '\n' + postPart,
+                      query.content + '\n\n[date]: iso8601:' + (new Date()).toISOString() + '\n' + postPart,
                       postFinished, postFailed);
     }
 
