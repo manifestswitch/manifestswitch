@@ -147,6 +147,9 @@ var ui_server_js_gzip = null;
 var jquery_js = _JQUERY_JS_;
 var jquery_js_gzip = null;
 
+var markdown_js = _MARKDOWN_JS_;
+var markdown_js_gzip = null;
+
 // what we are ultimately looking for is the hashes of all our
 // friend's signature fingerprints, and hash of our encryption
 // fingerprint
@@ -2260,7 +2263,7 @@ function getGroupRootsPageHtml(params) {
             html += '<li><a class="hash" href="/post/' + hex + '">' + hex + '</a> <a class="comments" href="/posts?parent=' + hex + '">Comments</a></li>';
         }
         html += '</ul><div><a href="/posts/form' + (hash !== null ? '?parent=' + hash : '') + '">Add</a></div>';
-        html += '<div><a href="/">Home</a></div><script type="text/javascript" deferred="deferred" src="/jquery"></script><script type="text/javascript" deferred="deferred" src="/script"></script></body></html>';
+        html += '<div><a href="/">Home</a></div><script type="text/javascript" deferred="deferred" src="/jquery"></script><script type="text/javascript" deferred="deferred" src="/markdown"></script><script type="text/javascript" deferred="deferred" src="/script"></script></body></html>';
 
         sendResponse(params, 200, html);
     }
@@ -2472,6 +2475,14 @@ function getJqueryJs(params) {
     params.headers['Cache-Control'] = 'max-age=31536000';
     // TODO: pre gzip -9 this into a new Buffer
     sendRawResponse(params, 200, jquery_js);
+}
+
+function getMarkdownJs(params) {
+    params.contentType = 'text/javascript; charset=utf-8';
+    // 365 days
+    params.headers['Cache-Control'] = 'max-age=31536000';
+    // TODO: pre gzip -9 this into a new Buffer
+    sendRawResponse(params, 200, markdown_js);
 }
 
 function followUntilSuccess(params, protocol, options, payload, cont, scount) {
@@ -3331,6 +3342,12 @@ var places_exact = {
     '/jquery': {
         'GET': [
             { type: 'text/javascript', action: getJqueryJs }
+        ]
+    },
+
+    '/markdown': {
+        'GET': [
+            { type: 'text/javascript', action: getMarkdownJs }
         ]
     },
 
