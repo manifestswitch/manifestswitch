@@ -138,7 +138,7 @@ future, find or make a library to do this efficiently.
 
 ////////////////////////////////////////////////////////////////////////////////
 
-var ui_server_css = '.hash { font-family: monospace; }';
+var ui_server_css = '.hash { font-family: monospace; } ul.comments { padding-left: 16px; } ul.comments li { list-style: none; } ul.comments p { margin: 16px 0 0; } a.comments, a.reply { margin-left: 4px; font-size: 12px; } li a { color: #999; } div.content { font-size: 12px; } div.content h1 { font-size: 24px; } ';
 var ui_server_css_gzip = new Buffer('H4sICIuczFECA2RhdGEtc2VydmVyLmNzcwDTy0gszlCoVkjLzyvRTUvMzcyptFLIzc/LLy5ITE61VqjlAgB3ZlLSIgAAAA==', 'base64');
 
 var ui_server_js = _UI_SERVER_JS_;
